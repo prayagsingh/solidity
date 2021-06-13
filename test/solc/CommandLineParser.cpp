@@ -355,7 +355,7 @@ BOOST_AUTO_TEST_CASE(standard_json_mode_options)
 		"--standard-json",
 		"--base-path=/home/user/",
 		"--allow-paths=/tmp,/home,project,../contracts",
-		"--ignore-missing",                // Ignored in Standard JSON mode
+		"--ignore-missing",
 		"--error-recovery",                // Ignored in Standard JSON mode
 		"--output-dir=/tmp/out",           // Accepted but has no effect in Standard JSON mode
 		"--overwrite",                     // Accepted but has no effect in Standard JSON mode
@@ -391,10 +391,10 @@ BOOST_AUTO_TEST_CASE(standard_json_mode_options)
 
 	CommandLineOptions expectedOptions;
 	expectedOptions.inputMode = InputMode::StandardJson;
-	expectedOptions.sourceFilePaths = {};
-	expectedOptions.standardJsonInputFile = "input.json";
+	expectedOptions.sourceFilePaths = {"input.json"};
 	expectedOptions.basePath = "/home/user/";
 	expectedOptions.allowedDirectories = {"/tmp", "/home", "project", "../contracts"};
+	expectedOptions.ignoreMissingInputFiles = true;
 	expectedOptions.outputDir = "/tmp/out";
 	expectedOptions.overwriteFiles = true;
 	expectedOptions.prettyJson = true;

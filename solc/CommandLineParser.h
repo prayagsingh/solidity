@@ -103,7 +103,6 @@ struct CommandLineOptions
 
 	// Input Options
 	std::set<boost::filesystem::path> sourceFilePaths;
-	std::string standardJsonInputFile;
 	std::vector<ImportRemapper::Remapping> remappings;
 	bool addStdin = false;
 	boost::filesystem::path basePath = "";
