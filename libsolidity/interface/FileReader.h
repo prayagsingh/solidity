@@ -45,12 +45,13 @@ public:
 		boost::filesystem::path _basePath = {},
 		FileSystemPathSet _allowedDirectories = {}
 	):
-		m_basePath(std::move(_basePath)),
 		m_allowedDirectories(std::move(_allowedDirectories)),
 		m_sourceCodes()
-	{}
+	{
+		setBasePath(_basePath);
+	}
 
-	void setBasePath(boost::filesystem::path _path) { m_basePath = std::move(_path); }
+	void setBasePath(boost::filesystem::path const& _path);
 	boost::filesystem::path const& basePath() const noexcept { return m_basePath; }
 
 	void allowDirectory(boost::filesystem::path _path) { m_allowedDirectories.insert(std::move(_path)); }
@@ -58,14 +59,14 @@ public:
 
 	StringMap const& sourceCodes() const noexcept { return m_sourceCodes; }
 
-	/// Retrieves the source code for a given source unit ID.
+	/// Retrieves the source code for a given source unit name.
 	SourceCode const& sourceCode(SourceUnitName const& _sourceUnitName) const { return m_sourceCodes.at(_sourceUnitName); }
 
-	/// Resets all sources to the given map of source unit ID to source codes.
+	/// Resets all sources to the given map of source unit name to source codes.
 	/// Does not enforce @a allowedDirectories().
 	void setSources(StringMap _sources);
 
-	/// Adds the source code for a given source unit ID.
+	/// Adds the source code under a source unit name created by normalizing the file path.
 	/// Does not enforce @a allowedDirectories().
 	void setSource(boost::filesystem::path const& _path, SourceCode _source);
 
@@ -83,7 +84,40 @@ public:
 		return [this](std::string const& _kind, std::string const& _path) { return readFile(_kind, _path); };
 	}
 
+	/// Normalizes a filesystem path in a way that removes small, inconsequential differences. Specifically:
+	/// - Makes the path absolute. If it is empty, it becomes the current working directory.
+	/// - Collapses redundant . and .. segments.
+	/// - Squashes sequences of multiple slashes into one.
+	/// - Ensures that forward slashes are used as path separators on all platforms.
+	/// - Ensures that the path has a root name only if it's different from the root containing
+	///   the current working directory.
+	/// The specified path does not have to actually exist and the function:
+	/// - Does NOT resolve symlinks.
+	/// - Preserves the slash at the end of the path regardless of whether it's a directory.
+	/// - Preserves case. Even if the filesystem is case-insensitive and case-preserving, and the
+	///   case differs, the actual case from disk is not detected.
+	static boost::filesystem::path normalizeCLIPathForVFS(boost::filesystem::path const& _path);
+
+	/// Returns true if all the path components of @a _prefix are present at the beginning of @a _path.
+	/// Both paths must be absolute and normalized (no . or .. segments, no multiple consecutive slashes).
+	/// Paths are treated as case-sensitive. Does not require the path to actually exist in the
+	/// filesystem and does not follow symlinks. Only considers whole segments, e.g. /abc/d is not
+	/// considered a prefix of /abc/def. Both paths must be non-empty.
+	static bool isPathPrefix(boost::filesystem::path _prefix, boost::filesystem::path const& _path);
+
+	/// Returns a copy of @a _path with @a _prefix removed from the beginning.
+	/// Only works for arguments for which isPathPrefix() returns true.
+	/// Returns '.' if @a _path and @_prefix are identical.
+	static boost::filesystem::path stripPathPrefix(boost::filesystem::path _prefix, boost::filesystem::path const& _path);
+
 private:
+	/// If @a _path starts with a number of .. segments, returns a path consisting only of those
+	/// segments (root name is not included). Otherwise returns an empty path. @a _path must be absolute.
+	static boost::filesystem::path absoluteDotDotPrefix(boost::filesystem::path const& _path);
+
+	/// Returns true if the path contains any .. segments.
+	static bool hasDotDotSegments(boost::filesystem::path const& _path);
+
 	/// Base path, used for resolving relative paths in imports.
 	boost::filesystem::path m_basePath;
 

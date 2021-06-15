@@ -4,6 +4,7 @@ Language Features:
 
 
 Compiler Features:
+ * Commandline Interface: Normalize paths specified on the command line and make them relative whenever files are located inside base path.
 
 
 Bugfixes:
