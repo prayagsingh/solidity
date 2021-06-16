@@ -45,7 +45,7 @@ struct DebugData
 	}
 };
 
-struct TypedName { std::shared_ptr<DebugData const> debugData; YulString name; Type type; };
+struct TypedName { std::shared_ptr<DebugData const> debugData; YulString name{}; Type type{}; };
 using TypedNameList = std::vector<TypedName>;
 
 /// Literal number or string (up to 32 bytes)
@@ -59,23 +59,23 @@ struct Identifier { std::shared_ptr<DebugData const> debugData; YulString name; 
 /// Multiple assignment ("x, y := f()"), where the left hand side variables each occupy
 /// a single stack slot and expects a single expression on the right hand returning
 /// the same amount of items as the number of variables.
-struct Assignment { std::shared_ptr<DebugData const> debugData; std::vector<Identifier> variableNames; std::unique_ptr<Expression> value; };
-struct FunctionCall { std::shared_ptr<DebugData const> debugData; Identifier functionName; std::vector<Expression> arguments; };
+struct Assignment { std::shared_ptr<DebugData const> debugData; std::vector<Identifier> variableNames{}; std::unique_ptr<Expression> value{}; };
+struct FunctionCall { std::shared_ptr<DebugData const> debugData; Identifier functionName{}; std::vector<Expression> arguments{}; };
 /// Statement that contains only a single expression
-struct ExpressionStatement { std::shared_ptr<DebugData const> debugData; Expression expression; };
+struct ExpressionStatement { std::shared_ptr<DebugData const> debugData; Expression expression{}; };
 /// Block-scope variable declaration ("let x:u256 := mload(20:u256)"), non-hoisted
-struct VariableDeclaration { std::shared_ptr<DebugData const> debugData; TypedNameList variables; std::unique_ptr<Expression> value; };
+struct VariableDeclaration { std::shared_ptr<DebugData const> debugData; TypedNameList variables{}; std::unique_ptr<Expression> value{}; };
 /// Block that creates a scope (frees declared stack variables)
-struct Block { std::shared_ptr<DebugData const> debugData; std::vector<Statement> statements; };
+struct Block { std::shared_ptr<DebugData const> debugData; std::vector<Statement> statements{}; };
 /// Function definition ("function f(a, b) -> (d, e) { ... }")
-struct FunctionDefinition { std::shared_ptr<DebugData const> debugData; YulString name; TypedNameList parameters; TypedNameList returnVariables; Block body; };
+struct FunctionDefinition { std::shared_ptr<DebugData const> debugData; YulString name{}; TypedNameList parameters{}; TypedNameList returnVariables{}; Block body{}; };
 /// Conditional execution without "else" part.
-struct If { std::shared_ptr<DebugData const> debugData; std::unique_ptr<Expression> condition; Block body; };
+struct If { std::shared_ptr<DebugData const> debugData; std::unique_ptr<Expression> condition{}; Block body{}; };
 /// Switch case or default case
-struct Case { std::shared_ptr<DebugData const> debugData; std::unique_ptr<Literal> value; Block body; };
+struct Case { std::shared_ptr<DebugData const> debugData; std::unique_ptr<Literal> value{}; Block body{}; };
 /// Switch statement
-struct Switch { std::shared_ptr<DebugData const> debugData; std::unique_ptr<Expression> expression; std::vector<Case> cases; };
-struct ForLoop { std::shared_ptr<DebugData const> debugData; Block pre; std::unique_ptr<Expression> condition; Block post; Block body; };
+struct Switch { std::shared_ptr<DebugData const> debugData; std::unique_ptr<Expression> expression{}; std::vector<Case> cases{}; };
+struct ForLoop { std::shared_ptr<DebugData const> debugData; Block pre{}; std::unique_ptr<Expression> condition{}; Block post{}; Block body{}; };
 /// Break statement (valid within for loop)
 struct Break { std::shared_ptr<DebugData const> debugData; };
 /// Continue statement (valid within for loop)

@@ -239,6 +239,8 @@ public:
 	/// by sourceNames().
 	std::map<std::string, unsigned> sourceIndices() const;
 
+	langutil::CharStream const* charStreamForSourceIndex(unsigned _sourceIndex) const;
+
 	/// @returns the previously used scanner, useful for counting lines during error reporting.
 	langutil::Scanner const& scanner(std::string const& _sourceName) const;
 

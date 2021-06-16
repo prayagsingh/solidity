@@ -31,6 +31,7 @@
 #include <liblangutil/Scanner.h>
 #include <liblangutil/ParserBase.h>
 
+#include <functional>
 #include <memory>
 #include <variant>
 #include <vector>
@@ -49,12 +50,15 @@ public:
 	explicit Parser(
 		langutil::ErrorReporter& _errorReporter,
 		Dialect const& _dialect,
-		std::optional<langutil::SourceLocation> _locationOverride = {}
+		std::optional<langutil::SourceLocation> _locationOverride = {},
+		std::function<std::shared_ptr<langutil::CharStream>(unsigned)> _charStreamForSourceIndex = {}
 	):
 		ParserBase(_errorReporter),
 		m_dialect(_dialect),
+		m_charStreamForSourceIndex{std::move(_charStreamForSourceIndex)},
 		m_locationOverride(std::move(_locationOverride))
-	{}
+	{
+	}
 
 	/// Parses an inline assembly block starting with `{` and ending with `}`.
 	/// @param _reuseScanner if true, do check for end of input after the `}`.
@@ -62,17 +66,40 @@ public:
 	std::unique_ptr<Block> parse(std::shared_ptr<langutil::Scanner> const& _scanner, bool _reuseScanner);
 
 protected:
+	std::tuple<langutil::SourceLocation, bool> currentOverridableLocation() const
+	{
+		auto resutl = std::tuple<langutil::SourceLocation, bool>{};
+		if (m_documentedLocation)
+			return {*m_documentedLocation, true};
+		if (m_locationOverride)
+			return {*m_locationOverride, false};
+		return {ParserBase::currentLocation(), false};
+	}
+
 	langutil::SourceLocation currentLocation() const override
 	{
+		if (m_documentedLocation)
+			return *m_documentedLocation;
 		return m_locationOverride ? *m_locationOverride : ParserBase::currentLocation();
 	}
 
+	bool updateLocation();
+
+	[[nodiscard]]
+	std::shared_ptr<DebugData const> updateLocationEndFrom(
+		std::shared_ptr<DebugData const> const& _debugData,
+		langutil::SourceLocation const& _location,
+		bool _fromDocumentation
+	);
+
 	/// Creates an inline assembly node with the current source location.
-	template <class T> T createWithLocation() const
+	template <class T, typename ... Args> std::tuple<T, bool> createWithLocation(Args&& ..._args)
 	{
-		T r;
-		r.debugData = DebugData::create(currentLocation());
-		return r;
+		auto const fromDocumentation = updateLocation();
+		return std::tuple<T, bool>{
+			T{DebugData::create(currentLocation()), std::forward<Args>(_args)...},
+			fromDocumentation
+		};
 	}
 
 	Block parseBlock();
@@ -97,7 +124,9 @@ protected:
 
 private:
 	Dialect const& m_dialect;
+	std::function<std::shared_ptr<langutil::CharStream>(unsigned)> m_charStreamForSourceIndex;
 	std::optional<langutil::SourceLocation> m_locationOverride;
+	std::optional<langutil::SourceLocation> m_documentedLocation;
 	ForLoopComponent m_currentForLoopComponent = ForLoopComponent::None;
 	bool m_insideFunction = false;
 };

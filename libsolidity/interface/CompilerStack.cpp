@@ -81,6 +81,7 @@
 #include <utility>
 #include <map>
 #include <range/v3/view/concat.hpp>
+#include <range/v3/view/transform.hpp>
 
 #include <boost/algorithm/string/replace.hpp>
 
@@ -925,6 +926,12 @@ map<string, unsigned> CompilerStack::sourceIndices() const
 	solAssert(!indices.count(CompilerContext::yulUtilityFileName()), "");
 	indices[CompilerContext::yulUtilityFileName()] = index++;
 	return indices;
+}
+
+langutil::CharStream const* CompilerStack::charStreamForSourceIndex(unsigned _sourceIndex) const
+{
+	solAssert(_sourceIndex < m_sources.size(), "Cannot get CharStream of higher index than sources available.");
+	return next(begin(m_sources), _sourceIndex)->second.scanner->charStream().get();
 }
 
 Json::Value const& CompilerStack::contractABI(string const& _contractName) const
