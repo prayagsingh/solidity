@@ -102,6 +102,7 @@ private:
 
 	void visitAssert(FunctionCall const& _funCall);
 	void visitAddMulMod(FunctionCall const& _funCall) override;
+	void visitDeployment(FunctionCall const& _funCall);
 	void internalFunctionCall(FunctionCall const& _funCall);
 	void externalFunctionCall(FunctionCall const& _funCall);
 	void externalFunctionCallToTrustedCode(FunctionCall const& _funCall);

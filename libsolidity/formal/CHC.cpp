@@ -153,8 +153,14 @@ void CHC::endVisit(ContractDefinition const& _contract)
 	smtutil::Expression zeroes(true);
 	for (auto var: stateVariablesIncludingInheritedAndPrivate(_contract))
 		zeroes = zeroes && currentValue(*var) == smt::zeroValue(var->type());
-	addRule(smtutil::Expression::implies(initialConstraints(_contract) && zeroes, predicate(entry)), entry.functor().name);
+	smtutil::Expression newAddress = state().addressActive(state().thisAddress()) == smtutil::Expression(false);
+	addRule(smtutil::Expression::implies(initialConstraints(_contract) && zeroes && newAddress, predicate(entry)), entry.functor().name);
 	setCurrentBlock(entry);
+
+	auto const& entryAfterAddress = *createConstructorBlock(_contract, "implicit_constructor_entry_after_address");
+	state().setAddressActive(state().thisAddress(), true);
+	connectBlocks(m_currentBlock, predicate(entryAfterAddress));
+	setCurrentBlock(entryAfterAddress);
 
 	solAssert(!m_errorDest, "");
 	m_errorDest = m_constructorSummaries.at(&_contract);
@@ -192,6 +198,7 @@ void CHC::endVisit(ContractDefinition const& _contract)
 		m_context.addAssertion(errorFlag().currentValue() == 0);
 	}
 
+	state().writeStateVars(_contract, state().thisAddress());
 	connectBlocks(m_currentBlock, summary(_contract));
 
 	setCurrentBlock(*m_constructorSummaries.at(&_contract));
@@ -516,11 +523,13 @@ void CHC::endVisit(FunctionCall const& _funCall)
 		externalFunctionCall(_funCall);
 		SMTEncoder::endVisit(_funCall);
 		break;
+	case FunctionType::Kind::Creation:
+		visitDeployment(_funCall);
+		break;
 	case FunctionType::Kind::DelegateCall:
 	case FunctionType::Kind::BareCall:
 	case FunctionType::Kind::BareCallCode:
 	case FunctionType::Kind::BareDelegateCall:
-	case FunctionType::Kind::Creation:
 		SMTEncoder::endVisit(_funCall);
 		unknownFunctionCall(_funCall);
 		break;
@@ -536,7 +545,6 @@ void CHC::endVisit(FunctionCall const& _funCall)
 		SMTEncoder::endVisit(_funCall);
 		break;
 	}
-
 
 	createReturnedExpressions(_funCall, m_currentContract);
 }
@@ -689,6 +697,57 @@ void CHC::visitAddMulMod(FunctionCall const& _funCall)
 	verificationTargetEncountered(&_funCall, VerificationTargetType::DivByZero, expr(*_funCall.arguments().at(2)) == 0);
 
 	SMTEncoder::visitAddMulMod(_funCall);
+}
+
+void CHC::visitDeployment(FunctionCall const& _funCall)
+{
+	auto funType = dynamic_cast<FunctionType const*>(_funCall.expression().annotation().type);
+	ContractDefinition const* contract =
+		&dynamic_cast<ContractType const&>(*funType->returnParameterTypes().front()).contractDefinition();
+
+	// copy state variables from m_currentContract to state.storage.
+	state().writeStateVars(*m_currentContract, state().thisAddress());
+	errorFlag().increaseIndex();
+
+	auto originalTx = state().tx();
+	auto txOrigin = state().txMember("tx.origin");
+	state().newTx();
+	// set the transaction sender as this contract
+	m_context.addAssertion(state().txMember("msg.sender") == state().thisAddress());
+	// set the origin to be the current transaction origin
+	m_context.addAssertion(state().txMember("tx.origin") == txOrigin);
+
+	auto newAddr = state().newThisAddress();
+
+	if (auto constructor = contract->constructor())
+	{
+		auto const& args = _funCall.sortedArguments();
+		auto const& params = constructor->parameters();
+		solAssert(args.size() == params.size(), "");
+		for (size_t i = 0; i < args.size(); ++i)
+			m_context.addAssertion(expr(*args.at(i)) == m_context.variable(*params.at(i))->currentValue());
+	}
+	for (auto var: stateVariablesIncludingInheritedAndPrivate(*contract))
+		m_context.variable(*var)->increaseIndex();
+	Predicate const& constructorSummary = *m_constructorSummaries.at(contract);
+	m_context.addAssertion(smt::constructorCall(constructorSummary, m_context, false));
+
+	solAssert(m_errorDest, "");
+	connectBlocks(
+		m_currentBlock,
+		predicate(*m_errorDest),
+		errorFlag().currentValue() > 0
+	);
+	m_context.addAssertion(errorFlag().currentValue() == 0);
+
+	m_context.addAssertion(state().newThisAddress() == state().thisAddress(0));
+	// copy state variables from state.storage to m_currentContract.
+	state().readStateVars(*m_currentContract, state().thisAddress());
+
+	state().newTx();
+	m_context.addAssertion(originalTx == state().tx());
+
+	defineExpr(_funCall, newAddr);
 }
 
 void CHC::internalFunctionCall(FunctionCall const& _funCall)
