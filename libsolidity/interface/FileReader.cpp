@@ -159,6 +159,12 @@ bool FileReader::isPathPrefix(boost::filesystem::path _prefix, boost::filesystem
 	solAssert(!boost::starts_with(_prefix.root_name().string(), "\\\\"), "");
 	solAssert(!boost::starts_with(_path.root_name().string(), "\\\\"), "");
 
+	// Before 1.72.0 lexically_relative() was not handling paths with empty, dot and dot dot segments
+	// correctly (see https://github.com/boostorg/filesystem/issues/76). The only case where this
+	// is possible after our normalization is a directory name ending in a slash (filename is a dot).
+	if (_prefix.filename_is_dot())
+		_prefix.remove_filename();
+
 	boost::filesystem::path strippedPath = _path.lexically_relative(_prefix);
 	return !strippedPath.empty() && *strippedPath.begin() != "..";
 }
@@ -167,9 +173,11 @@ boost::filesystem::path FileReader::stripPathPrefix(boost::filesystem::path _pre
 {
 	solAssert(isPathPrefix(_prefix, _path), "");
 
+	if (_prefix.filename_is_dot())
+		_prefix.remove_filename();
+
 	boost::filesystem::path strippedPath = _path.lexically_relative(_prefix);
 	solAssert(strippedPath.empty() || *strippedPath.begin() != "..", "");
-
 	return strippedPath;
 }
 
