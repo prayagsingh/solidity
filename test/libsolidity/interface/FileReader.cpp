@@ -169,7 +169,7 @@ BOOST_AUTO_TEST_CASE(normalizeCLIPathForVFS_stripping_root_name)
 	boost::filesystem::path normalizedPath = FileReader::normalizeCLIPathForVFS(tempDir.path());
 	BOOST_TEST(normalizedPath == "\\" / tempDir.path().lexically_relative(tempDir.path().root_name()));
 	BOOST_TEST(normalizedPath.root_name().empty());
-	BOOST_TEST(normalizedPath.root_directory() == unnamedRoot);
+	BOOST_TEST(normalizedPath.root_directory() == "\\");
 }
 #endif
 
