@@ -2653,6 +2653,16 @@ MemberAccess const* SMTEncoder::isEmptyPush(Expression const& _expr) const
 	return nullptr;
 }
 
+smtutil::Expression SMTEncoder::contractAddressValue(FunctionCall const& _f)
+{
+	FunctionType const& funType = dynamic_cast<FunctionType const&>(*_f.expression().annotation().type);
+	if (funType.kind() == FunctionType::Kind::Internal)
+		return state().thisAddress();
+	if (MemberAccess const* callBase = dynamic_cast<MemberAccess const*>(&_f.expression()))
+		return expr(callBase->expression());
+	solAssert(false, "Unreachable!");
+}
+
 bool SMTEncoder::isPublicGetter(Expression const& _expr) {
 	if (!isTrustedExternalCall(&_expr))
 		return false;

@@ -140,6 +140,10 @@ private:
 	/// @returns true if _function is Natspec annotated to be abstracted by
 	/// nondeterministic values.
 	bool abstractAsNondet(FunctionDefinition const& _function);
+
+	/// @returns true if external calls should be considered trusted.
+	/// If that's the case, their code is used if available at compile time.
+	bool externalCallsIsTrustedMode();
 	//@}
 
 	/// Sort helpers.
