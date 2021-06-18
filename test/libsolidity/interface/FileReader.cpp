@@ -68,6 +68,7 @@ BOOST_AUTO_TEST_CASE(normalizeCLIPathForVFS_relative_path)
 	TemporaryWorkingDirectory tempWorkDir(tempDir.path() / "x/y/z");
 	soltestAssert(tempDir.path().is_absolute(), "");
 
+	cout << "Actual: " << FileReader::normalizeCLIPathForVFS(".") << " | Expected: " << tempDir.path() / "x/y/z/" << endl;
 	BOOST_TEST(FileReader::normalizeCLIPathForVFS(".") == tempDir.path() / "x/y/z/");
 	BOOST_TEST(FileReader::normalizeCLIPathForVFS("./") == tempDir.path() / "x/y/z/");
 	BOOST_TEST(FileReader::normalizeCLIPathForVFS("../") == tempDir.path() / "x/y/");
@@ -125,6 +126,7 @@ BOOST_AUTO_TEST_CASE(normalizeCLIPathForVFS_unc_path)
 	BOOST_TEST(FileReader::normalizeCLIPathForVFS("\\\\host/a/b/") == "\\\\host/a/b/");
 #else
 	// On UNIX systems it's just a fancy relative path instead
+	cout << "Actual: " << FileReader::normalizeCLIPathForVFS("\\\\host/") << " | Expected: " << tempDir.path() / "\\\\host/" << endl;
 	BOOST_TEST(FileReader::normalizeCLIPathForVFS("\\\\host/") == tempDir.path() / "\\\\host/");
 	BOOST_TEST(FileReader::normalizeCLIPathForVFS("\\\\host/a/b") == tempDir.path() / "\\\\host/a/b");
 	BOOST_TEST(FileReader::normalizeCLIPathForVFS("\\\\host/a/b/") == tempDir.path() / "\\\\host/a/b/");
@@ -143,6 +145,7 @@ BOOST_AUTO_TEST_CASE(normalizeCLIPathForVFS_root_name_only)
 	// directory.
 
 	// UNC paths
+	cout << "Actual: " << FileReader::normalizeCLIPathForVFS("//") << " | Expected: " << "//" / tempDir.path() << endl;
 	BOOST_TEST(FileReader::normalizeCLIPathForVFS("//") == "//" / tempDir.path());
 	BOOST_TEST(FileReader::normalizeCLIPathForVFS("//host") == "//host" / tempDir.path());
 
