@@ -51,6 +51,12 @@ SMTCheckerTest::SMTCheckerTest(string const& _filename): SyntaxTest(_filename, E
 	else
 		BOOST_THROW_EXCEPTION(runtime_error("Invalid SMT engine choice."));
 
+	auto extCallsMode = ModelCheckerExtCalls::fromString(m_reader.stringSetting("SMTExtCalls", "untrusted"));
+	if (extCallsMode)
+		m_modelCheckerSettings.externalCalls = *extCallsMode;
+	else
+		BOOST_THROW_EXCEPTION(runtime_error("Invalid SMT external calls mode."));
+
 	if (m_enabledSolvers.none() || m_modelCheckerSettings.engine.none())
 		m_shouldRun = false;
 
