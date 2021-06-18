@@ -227,8 +227,8 @@ BOOST_AUTO_TEST_CASE(isPathPrefix_file_prefix)
 {
 	BOOST_TEST(FileReader::isPathPrefix("/", "/contract.sol"));
 	BOOST_TEST(FileReader::isPathPrefix("/contract.sol", "/contract.sol"));
-	BOOST_TEST(!FileReader::isPathPrefix("/contract.sol/", "/contract.sol"));
-	BOOST_TEST(!FileReader::isPathPrefix("/contract.sol/.", "/contract.sol"));
+	BOOST_TEST(FileReader::isPathPrefix("/contract.sol/", "/contract.sol"));
+	BOOST_TEST(FileReader::isPathPrefix("/contract.sol/.", "/contract.sol"));
 
 	BOOST_TEST(FileReader::isPathPrefix("/", "/a/bc/def/contract.sol"));
 	BOOST_TEST(FileReader::isPathPrefix("/a", "/a/bc/def/contract.sol"));
@@ -305,6 +305,8 @@ BOOST_AUTO_TEST_CASE(stripPathPrefix_file_prefix)
 {
 	BOOST_TEST(FileReader::stripPathPrefix("/", "/contract.sol") == "contract.sol");
 	BOOST_TEST(FileReader::stripPathPrefix("/contract.sol", "/contract.sol") == ".");
+	BOOST_TEST(FileReader::stripPathPrefix("/contract.sol/", "/contract.sol") == ".");
+	BOOST_TEST(FileReader::stripPathPrefix("/contract.sol/.", "/contract.sol") == ".");
 
 	BOOST_TEST(FileReader::stripPathPrefix("/", "/a/bc/def/contract.sol") == "a/bc/def/contract.sol");
 	BOOST_TEST(FileReader::stripPathPrefix("/a", "/a/bc/def/contract.sol") == "bc/def/contract.sol");
