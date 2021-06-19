@@ -223,7 +223,7 @@ BOOST_AUTO_TEST_CASE(normalizeCLIPathForVFS_case_sensitivity)
 BOOST_AUTO_TEST_CASE(normalizeCLIPathForVFS_path_separators)
 {
 	// Even on Windows we want / as a separator.
-	BOOST_TEST(FileReader::normalizeCLIPathForVFS("/a/b/c").native() == "/a/b/c");
+	BOOST_TEST(FileReader::normalizeCLIPathForVFS("/a/b/c").native() == boost::filesystem::path("/a/b/c").native());
 }
 
 BOOST_AUTO_TEST_CASE(isPathPrefix_file_prefix)
