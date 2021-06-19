@@ -126,9 +126,11 @@ boost::filesystem::path FileReader::normalizeCLIPathForVFS(boost::filesystem::pa
 		!boost::starts_with(normalizedPath.root_name().string(), "\\\\")
 	)
 	{
-		boost::filesystem::path workingDirRootPath = boost::filesystem::canonical(boost::filesystem::current_path()).root_path();
+		boost::filesystem::path workingDirRootPath = boost::filesystem::weakly_canonical(boost::filesystem::current_path()).root_path();
 		if (normalizedPath.root_name() == workingDirRootPath)
 			normalizedRootPath = "/";
+		else if (normalizedPath.root_name().empty())
+			normalizedRootPath = workingDirRootPath;
 	}
 
 	boost::filesystem::path normalizedPathNoDotDot = normalizedPath;
