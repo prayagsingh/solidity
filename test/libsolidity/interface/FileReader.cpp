@@ -216,14 +216,14 @@ BOOST_AUTO_TEST_CASE(normalizeCLIPathForVFS_case_sensitivity)
 	bool caseSensitiveFilesystem = boost::filesystem::create_directories(tempDir.path() / "ABC");
 	soltestAssert(boost::filesystem::equivalent(tempDir.path() / "abc", tempDir.path() / "ABC") != caseSensitiveFilesystem, "");
 
-	BOOST_TEST(FileReader::normalizeCLIPathForVFS((tempDir.path() / "abc")).native() == (tempDir.path() / "abc").native());
-	BOOST_TEST(FileReader::normalizeCLIPathForVFS((tempDir.path() / "ABC")).native() == (tempDir.path() / "ABC").native());
+	BOOST_TEST((FileReader::normalizeCLIPathForVFS((tempDir.path() / "abc")).native() == (tempDir.path() / "abc").native()));
+	BOOST_TEST((FileReader::normalizeCLIPathForVFS((tempDir.path() / "ABC")).native() == (tempDir.path() / "ABC").native()));
 }
 
 BOOST_AUTO_TEST_CASE(normalizeCLIPathForVFS_path_separators)
 {
 	// Even on Windows we want / as a separator.
-	BOOST_TEST(FileReader::normalizeCLIPathForVFS("/a/b/c").native() == boost::filesystem::path("/a/b/c").native());
+	BOOST_TEST((FileReader::normalizeCLIPathForVFS("/a/b/c").native() == boost::filesystem::path("/a/b/c").native()));
 }
 
 BOOST_AUTO_TEST_CASE(isPathPrefix_file_prefix)
