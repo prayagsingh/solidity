@@ -26,6 +26,7 @@
 #include <libyul/AssemblyStack.h>
 #include <libyul/AsmAnalysisInfo.h>
 
+#include <liblangutil/DebugInfoSelection.h>
 #include <liblangutil/ErrorReporter.h>
 #include <liblangutil/SourceReferenceFormatter.h>
 
@@ -67,7 +68,8 @@ bool YulInterpreterTest::parse(ostream& _stream, string const& _linePrefix, bool
 	AssemblyStack stack(
 		solidity::test::CommonOptions::get().evmVersion(),
 		AssemblyStack::Language::StrictAssembly,
-		solidity::frontend::OptimiserSettings::none()
+		solidity::frontend::OptimiserSettings::none(),
+		DebugInfoSelection::All()
 	);
 	if (stack.parseAndAnalyze("", m_source))
 	{
@@ -78,7 +80,8 @@ bool YulInterpreterTest::parse(ostream& _stream, string const& _linePrefix, bool
 	else
 	{
 		AnsiColorized(_stream, _formatted, {formatting::BOLD, formatting::RED}) << _linePrefix << "Error parsing source." << endl;
-		printErrors(_stream, stack.errors());
+		SourceReferenceFormatter{_stream, stack, true, false}
+			.printErrorInformation(stack.errors());
 		return false;
 	}
 }
@@ -91,21 +94,18 @@ string YulInterpreterTest::interpret()
 	state.maxExprNesting = 64;
 	try
 	{
-		Interpreter::run(state, EVMDialect::strictAssemblyForEVMObjects(langutil::EVMVersion{}), *m_ast);
+		Interpreter::run(
+			state,
+			EVMDialect::strictAssemblyForEVMObjects(langutil::EVMVersion{}),
+			*m_ast,
+			/*disableMemoryTracing=*/false
+		);
 	}
 	catch (InterpreterTerminatedGeneric const&)
 	{
 	}
 
 	stringstream result;
-	state.dumpTraceAndState(result);
+	state.dumpTraceAndState(result, false);
 	return result.str();
-}
-
-void YulInterpreterTest::printErrors(ostream& _stream, ErrorList const& _errors)
-{
-	SourceReferenceFormatter formatter(_stream, true, false);
-
-	for (auto const& error: _errors)
-		formatter.printErrorInformation(*error);
 }

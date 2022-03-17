@@ -16,4 +16,5 @@ contract C
 }
 // ====
 // SMTEngine: all
-// ----
+// SMTIgnoreOS: macos
+// SMTIgnoreInv: yes

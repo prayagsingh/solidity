@@ -102,7 +102,12 @@ bool NameAndTypeResolver::performImports(SourceUnit& _sourceUnit, map<string, So
 					else
 						for (Declaration const* declaration: declarations)
 							if (!DeclarationRegistrationHelper::registerDeclaration(
-								target, *declaration, alias.alias.get(), &alias.location, false, m_errorReporter
+								target,
+								*declaration,
+								alias.alias ? alias.alias.get() : &alias.symbol->name(),
+								&alias.location,
+								false,
+								m_errorReporter
 							))
 								error = true;
 				}
@@ -520,9 +525,9 @@ bool DeclarationRegistrationHelper::registerDeclaration(
 		Declaration const* conflictingDeclaration = _container.conflictingDeclaration(_declaration, _name);
 		solAssert(conflictingDeclaration, "");
 		bool const comparable =
-			_errorLocation->source &&
-			conflictingDeclaration->location().source &&
-			_errorLocation->source->name() == conflictingDeclaration->location().source->name();
+			_errorLocation->sourceName &&
+			conflictingDeclaration->location().sourceName &&
+			*_errorLocation->sourceName == *conflictingDeclaration->location().sourceName;
 		if (comparable && _errorLocation->start < conflictingDeclaration->location().start)
 		{
 			firstDeclarationLocation = *_errorLocation;
@@ -566,7 +571,8 @@ bool DeclarationRegistrationHelper::visit(ImportDirective& _import)
 	if (!m_scopes[importee])
 		m_scopes[importee] = make_shared<DeclarationContainer>(nullptr, m_scopes[nullptr].get());
 	m_scopes[&_import] = m_scopes[importee];
-	return ASTVisitor::visit(_import);
+	ASTVisitor::visit(_import);
+	return false; // Do not recurse into child nodes (Identifier for symbolAliases)
 }
 
 bool DeclarationRegistrationHelper::visit(ContractDefinition& _contract)
@@ -607,13 +613,31 @@ bool DeclarationRegistrationHelper::visitNode(ASTNode& _node)
 
 	if (auto* declaration = dynamic_cast<Declaration*>(&_node))
 		registerDeclaration(*declaration);
+
+	if (auto* annotation = dynamic_cast<TypeDeclarationAnnotation*>(&_node.annotation()))
+	{
+		string canonicalName = dynamic_cast<Declaration const&>(_node).name();
+		solAssert(!canonicalName.empty(), "");
+
+		for (
+			ASTNode const* scope = m_currentScope;
+			scope != nullptr;
+			scope = m_scopes[scope]->enclosingNode()
+		)
+			if (auto decl = dynamic_cast<Declaration const*>(scope))
+			{
+				solAssert(!decl->name().empty(), "");
+				canonicalName = decl->name() + "." + canonicalName;
+			}
+
+		annotation->canonicalName = canonicalName;
+	}
+
 	if (dynamic_cast<ScopeOpener const*>(&_node))
 		enterNewSubScope(_node);
 
 	if (auto* variableScope = dynamic_cast<VariableScope*>(&_node))
 		m_currentFunction = variableScope;
-	if (auto* annotation = dynamic_cast<TypeDeclarationAnnotation*>(&_node.annotation()))
-		annotation->canonicalName = currentCanonicalName();
 
 	return true;
 }
@@ -661,25 +685,6 @@ void DeclarationRegistrationHelper::registerDeclaration(Declaration& _declaratio
 
 	solAssert(_declaration.annotation().scope == m_currentScope, "");
 	solAssert(_declaration.annotation().contract == m_currentContract, "");
-}
-
-string DeclarationRegistrationHelper::currentCanonicalName() const
-{
-	string ret;
-	for (
-		ASTNode const* scope = m_currentScope;
-		scope != nullptr;
-		scope = m_scopes[scope]->enclosingNode()
-	)
-	{
-		if (auto decl = dynamic_cast<Declaration const*>(scope))
-		{
-			if (!ret.empty())
-				ret = "." + ret;
-			ret = decl->name() + ret;
-		}
-	}
-	return ret;
 }
 
 }

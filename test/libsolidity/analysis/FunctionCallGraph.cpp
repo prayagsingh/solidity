@@ -47,6 +47,7 @@
 #include <vector>
 
 using namespace std;
+using namespace solidity::util;
 using namespace solidity::langutil;
 using namespace solidity::frontend;
 
@@ -215,7 +216,7 @@ ostream& operator<<(ostream& _out, map<string, set<string>> const& _map)
 namespace boost::test_tools::tt_detail
 {
 
-// Boost won't find find the << operator unless we put it in the std namespace which is illegal.
+// Boost won't find the << operator unless we put it in the std namespace which is illegal.
 // The recommended solution is to overload print_log_value<> struct and make it use our operator.
 
 template<>
@@ -1114,7 +1115,6 @@ BOOST_AUTO_TEST_CASE(interfaces_and_abstract_contracts)
 	unique_ptr<CompilerStack> compilerStack = parseAndAnalyzeContracts(R"(
 		interface I {
 			event Ev(uint);
-			modifier m() virtual;
 
 			function ext1() external;
 			function ext2() external;
@@ -1126,6 +1126,8 @@ BOOST_AUTO_TEST_CASE(interfaces_and_abstract_contracts)
 		}
 
 		abstract contract C is J {
+			modifier m() virtual;
+
 			function ext3() external override virtual;
 			function ext4() external { inr2();}
 			function inr1() internal virtual;
@@ -1167,7 +1169,7 @@ BOOST_AUTO_TEST_CASE(interfaces_and_abstract_contracts)
 			{"Entry", "function C.ext4()"},
 			{"function C.ext4()", "function C.inr2()"},
 			{"function C.inr2()", "function C.inr1()"},
-			{"function C.inr2()", "modifier I.m"},
+			{"function C.inr2()", "modifier C.m"},
 		}},
 		{"D", {
 			{"Entry", "function D.ext1()"},
@@ -1854,6 +1856,7 @@ BOOST_AUTO_TEST_CASE(builtins)
 				abi.encodePacked;
 				abi.encodeWithSelector;
 				abi.encodeWithSignature;
+				block.basefee;
 				block.chainid;
 				block.coinbase;
 				block.difficulty;

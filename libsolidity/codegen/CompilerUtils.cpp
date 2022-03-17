@@ -40,7 +40,7 @@ using namespace solidity::langutil;
 
 using solidity::util::Whiskers;
 using solidity::util::h256;
-using solidity::util::toCompactHexWithPrefix;
+using solidity::toCompactHexWithPrefix;
 
 unsigned const CompilerUtils::dataStartOffset = 4;
 size_t const CompilerUtils::freeMemoryPointer = 64;
@@ -54,7 +54,7 @@ static_assert(CompilerUtils::generalPurposeMemoryStart >= CompilerUtils::zeroPoi
 void CompilerUtils::initialiseFreeMemoryPointer()
 {
 	size_t reservedMemory = m_context.reservedMemory();
-	solAssert(bigint(generalPurposeMemoryStart) + bigint(reservedMemory) < bigint(1) << 63, "");
+	solAssert(bigint(generalPurposeMemoryStart) + bigint(reservedMemory) < bigint(1) << 63);
 	m_context << (u256(generalPurposeMemoryStart) + reservedMemory);
 	storeFreeMemoryPointer();
 }
@@ -92,7 +92,7 @@ void CompilerUtils::toSizeAfterFreeMemoryPointer()
 
 void CompilerUtils::revertWithStringData(Type const& _argumentType)
 {
-	solAssert(_argumentType.isImplicitlyConvertibleTo(*TypeProvider::fromElementaryTypeName("string memory")), "");
+	solAssert(_argumentType.isImplicitlyConvertibleTo(*TypeProvider::fromElementaryTypeName("string memory")));
 	fetchFreeMemoryPointer();
 	m_context << util::selectorFromSignature("Error(string)");
 	m_context << Instruction::DUP2 << Instruction::MSTORE;
@@ -173,9 +173,9 @@ void CompilerUtils::loadFromMemoryDynamic(
 
 	if (auto arrayType = dynamic_cast<ArrayType const*>(&_type))
 	{
-		solAssert(!arrayType->isDynamicallySized(), "");
-		solAssert(!_fromCalldata, "");
-		solAssert(_padToWordBoundaries, "");
+		solAssert(!arrayType->isDynamicallySized());
+		solAssert(!_fromCalldata);
+		solAssert(_padToWordBoundaries);
 		if (_keepUpdatedMemoryOffset)
 			m_context << arrayType->memoryDataSize() << Instruction::ADD;
 	}
@@ -251,7 +251,7 @@ void CompilerUtils::abiDecode(TypePointers const& _typeParameters, bool _fromMem
 		// Use the new Yul-based decoding function
 		auto stackHeightBefore = m_context.stackHeight();
 		abiDecodeV2(_typeParameters, _fromMemory);
-		solAssert(m_context.stackHeight() - stackHeightBefore == sizeOnStack(_typeParameters) - 2, "");
+		solAssert(m_context.stackHeight() - stackHeightBefore == sizeOnStack(_typeParameters) - 2);
 		return;
 	}
 
@@ -290,7 +290,7 @@ void CompilerUtils::abiDecode(TypePointers const& _typeParameters, bool _fromMem
 				);
 				// @todo If base type is an array or struct, it is still calldata-style encoded, so
 				// we would have to convert it like below.
-				solAssert(arrayType.location() == DataLocation::Memory, "");
+				solAssert(arrayType.location() == DataLocation::Memory);
 				if (arrayType.isDynamicallySized())
 				{
 					// compute data pointer
@@ -430,7 +430,7 @@ void CompilerUtils::encodeToMemory(
 	// stack: <v1> <v2> ... <vn> <mem>
 	bool const encoderV2 = m_context.useABICoderV2();
 	TypePointers targetTypes = _targetTypes.empty() ? _givenTypes : _targetTypes;
-	solAssert(targetTypes.size() == _givenTypes.size(), "");
+	solAssert(targetTypes.size() == _givenTypes.size());
 	for (Type const*& t: targetTypes)
 	{
 		Type const* tEncoding = t->fullEncodingType(_encodeAsLibraryTypes, encoderV2, !_padToWordBoundaries);
@@ -449,7 +449,7 @@ void CompilerUtils::encodeToMemory(
 		);
 		auto stackHeightBefore = m_context.stackHeight();
 		abiEncodeV2(_givenTypes, targetTypes, _encodeAsLibraryTypes, _padToWordBoundaries);
-		solAssert(stackHeightBefore - m_context.stackHeight() == sizeOnStack(_givenTypes), "");
+		solAssert(stackHeightBefore - m_context.stackHeight() == sizeOnStack(_givenTypes));
 		return;
 	}
 
@@ -489,8 +489,8 @@ void CompilerUtils::encodeToMemory(
 			{
 				// special case: convert storage reference type to value type - this is only
 				// possible for library calls where we just forward the storage reference
-				solAssert(_encodeAsLibraryTypes, "");
-				solAssert(_givenTypes[i]->sizeOnStack() == 1, "");
+				solAssert(_encodeAsLibraryTypes);
+				solAssert(_givenTypes[i]->sizeOnStack() == 1);
 			}
 			else if (
 				_givenTypes[i]->dataStoredIn(DataLocation::Storage) ||
@@ -638,7 +638,7 @@ void CompilerUtils::zeroInitialiseMemoryArray(ArrayType const& _type)
 {
 	if (_type.baseType()->hasSimpleZeroValueInMemory())
 	{
-		solAssert(_type.baseType()->isValueType(), "");
+		solAssert(_type.baseType()->isValueType());
 		Whiskers templ(R"({
 			let size := mul(length, <element_size>)
 			// cheap way of zero-initializing a memory range
@@ -772,6 +772,33 @@ void CompilerUtils::convertType(
 	Type::Category stackTypeCategory = _typeOnStack.category();
 	Type::Category targetTypeCategory = _targetType.category();
 
+	if (stackTypeCategory == Type::Category::UserDefinedValueType)
+	{
+		solAssert(_cleanupNeeded);
+		auto& userDefined = dynamic_cast<UserDefinedValueType const&>(_typeOnStack);
+		solAssert(_typeOnStack == _targetType || _targetType == userDefined.underlyingType());
+		return convertType(
+			userDefined.underlyingType(),
+			_targetType,
+			_cleanupNeeded,
+			_chopSignBits,
+			_asPartOfArgumentDecoding
+		);
+	}
+	if (targetTypeCategory == Type::Category::UserDefinedValueType)
+	{
+		solAssert(_cleanupNeeded);
+		auto& userDefined = dynamic_cast<UserDefinedValueType const&>(_targetType);
+		solAssert(_typeOnStack.isImplicitlyConvertibleTo(userDefined.underlyingType()));
+		return convertType(
+			_typeOnStack,
+			userDefined.underlyingType(),
+			_cleanupNeeded,
+			_chopSignBits,
+			_asPartOfArgumentDecoding
+		);
+	}
+
 	if (auto contrType = dynamic_cast<ContractType const*>(&_typeOnStack))
 		solAssert(!contrType->isSuper(), "Cannot convert magic variable \"super\"");
 
@@ -802,7 +829,7 @@ void CompilerUtils::convertType(
 		}
 		else if (targetTypeCategory == Type::Category::Address)
 		{
-			solAssert(typeOnStack.numBytes() * 8 == 160, "");
+			solAssert(typeOnStack.numBytes() * 8 == 160);
 			rightShiftNumberOnStack(256 - 160);
 		}
 		else
@@ -822,7 +849,7 @@ void CompilerUtils::convertType(
 		break;
 	}
 	case Type::Category::Enum:
-		solAssert(_targetType == _typeOnStack || targetTypeCategory == Type::Category::Integer, "");
+		solAssert(_targetType == _typeOnStack || targetTypeCategory == Type::Category::Integer);
 		if (enumOverflowCheckPending)
 		{
 			EnumType const& enumType = dynamic_cast<decltype(enumType)>(_typeOnStack);
@@ -858,13 +885,13 @@ void CompilerUtils::convertType(
 					cleanHigherOrderBits(*typeOnStack);
 			}
 			else if (stackTypeCategory == Type::Category::Address)
-				solAssert(targetBytesType.numBytes() * 8 == 160, "");
+				solAssert(targetBytesType.numBytes() * 8 == 160);
 			leftShiftNumberOnStack(256 - targetBytesType.numBytes() * 8);
 		}
 		else if (targetTypeCategory == Type::Category::Enum)
 		{
 			solAssert(stackTypeCategory != Type::Category::Address, "Invalid conversion to EnumType requested.");
-			solAssert(_typeOnStack.mobileType(), "");
+			solAssert(_typeOnStack.mobileType());
 			// just clean
 			convertType(_typeOnStack, *_typeOnStack.mobileType(), true);
 			EnumType const& enumType = dynamic_cast<decltype(enumType)>(_targetType);
@@ -937,13 +964,13 @@ void CompilerUtils::convertType(
 		if (targetTypeCategory == Type::Category::FixedBytes)
 		{
 			unsigned const numBytes = dynamic_cast<FixedBytesType const&>(_targetType).numBytes();
-			solAssert(data.size() <= 32, "");
+			solAssert(data.size() <= 32);
 			m_context << (u256(h256(data, h256::AlignLeft)) & (~(u256(-1) >> (8 * numBytes))));
 		}
 		else if (targetTypeCategory == Type::Category::Array)
 		{
 			auto const& arrayType = dynamic_cast<ArrayType const&>(_targetType);
-			solAssert(arrayType.isByteArray(), "");
+			solAssert(arrayType.isByteArrayOrString());
 			size_t storageSize = 32 + ((data.size() + 31) / 32) * 32;
 			allocateMemory(storageSize);
 			// stack: mempos
@@ -965,13 +992,13 @@ void CompilerUtils::convertType(
 		if (_targetType.category() == Type::Category::FixedBytes)
 		{
 			solAssert(
-				typeOnStack.isByteArray() && !typeOnStack.isString(),
+				typeOnStack.isByteArray(),
 				"Array types other than bytes not convertible to bytesNN."
 			);
-			solAssert(typeOnStack.isDynamicallySized(), "");
+			solAssert(typeOnStack.isDynamicallySized());
 
 			bool fromCalldata = typeOnStack.dataStoredIn(DataLocation::CallData);
-			solAssert(typeOnStack.sizeOnStack() == (fromCalldata ? 2 : 1), "");
+			solAssert(typeOnStack.sizeOnStack() == (fromCalldata ? 2 : 1));
 			if (fromCalldata)
 				m_context << Instruction::SWAP1;
 
@@ -985,14 +1012,14 @@ void CompilerUtils::convertType(
 			);
 			break;
 		}
-		solAssert(targetTypeCategory == stackTypeCategory, "");
+		solAssert(targetTypeCategory == stackTypeCategory);
 		auto const& targetType = dynamic_cast<ArrayType const&>(_targetType);
 		switch (targetType.location())
 		{
 		case DataLocation::Storage:
 			// Other cases are done explicitly in LValue::storeValue, and only possible by assignment.
 			solAssert(
-				(targetType.isPointer() || (typeOnStack.isByteArray() && targetType.isByteArray())) &&
+				(targetType.isPointer() || (typeOnStack.isByteArrayOrString() && targetType.isByteArrayOrString())) &&
 				typeOnStack.location() == DataLocation::Storage,
 				"Invalid conversion to storage type."
 			);
@@ -1007,9 +1034,9 @@ void CompilerUtils::convertType(
 					typeOnStack.baseType()->isDynamicallyEncoded()
 				)
 				{
-					solAssert(m_context.useABICoderV2(), "");
+					solAssert(m_context.useABICoderV2());
 					// stack: offset length(optional in case of dynamically sized array)
-					solAssert(typeOnStack.sizeOnStack() == (typeOnStack.isDynamicallySized() ? 2 : 1), "");
+					solAssert(typeOnStack.sizeOnStack() == (typeOnStack.isDynamicallySized() ? 2 : 1));
 					if (typeOnStack.isDynamicallySized())
 						m_context << Instruction::SWAP1;
 
@@ -1078,8 +1105,7 @@ void CompilerUtils::convertType(
 		}
 		case DataLocation::CallData:
 			solAssert(
-				targetType.isByteArray() &&
-				typeOnStack.isByteArray() &&
+				((targetType.isByteArrayOrString() && typeOnStack.isByteArrayOrString()) || _typeOnStack == _targetType) &&
 				typeOnStack.location() == DataLocation::CallData,
 				"Invalid conversion to calldata type."
 			);
@@ -1093,12 +1119,12 @@ void CompilerUtils::convertType(
 		if (_targetType.category() == Type::Category::FixedBytes)
 		{
 			solAssert(
-				typeOnStack.arrayType().isByteArray() && !typeOnStack.arrayType().isString(),
+				typeOnStack.arrayType().isByteArray(),
 				"Array types other than bytes not convertible to bytesNN."
 			);
-			solAssert(typeOnStack.isDynamicallySized(), "");
-			solAssert(typeOnStack.dataStoredIn(DataLocation::CallData), "");
-			solAssert(typeOnStack.sizeOnStack() == 2, "");
+			solAssert(typeOnStack.isDynamicallySized());
+			solAssert(typeOnStack.dataStoredIn(DataLocation::CallData));
+			solAssert(typeOnStack.sizeOnStack() == 2);
 
 			m_context << Instruction::SWAP1;
 			m_context.callYulFunction(
@@ -1112,14 +1138,16 @@ void CompilerUtils::convertType(
 			break;
 		}
 
-		solAssert(_targetType.category() == Type::Category::Array, "");
+		solAssert(_targetType.category() == Type::Category::Array);
 		auto const& targetArrayType = dynamic_cast<ArrayType const&>(_targetType);
-		solAssert(typeOnStack.arrayType().isImplicitlyConvertibleTo(targetArrayType), "");
+		solAssert(
+			typeOnStack.arrayType().isImplicitlyConvertibleTo(targetArrayType) ||
+			(typeOnStack.arrayType().isByteArrayOrString() && targetArrayType.isByteArrayOrString())
+		);
 		solAssert(
 			typeOnStack.arrayType().dataStoredIn(DataLocation::CallData) &&
 			typeOnStack.arrayType().isDynamicallySized() &&
-			!typeOnStack.arrayType().baseType()->isDynamicallyEncoded(),
-			""
+			!typeOnStack.arrayType().baseType()->isDynamicallyEncoded()
 		);
 		if (!_targetType.dataStoredIn(DataLocation::CallData))
 			return convertType(typeOnStack.arrayType(), _targetType);
@@ -1127,12 +1155,9 @@ void CompilerUtils::convertType(
 	}
 	case Type::Category::Struct:
 	{
-		solAssert(targetTypeCategory == stackTypeCategory, "");
+		solAssert(targetTypeCategory == stackTypeCategory);
 		auto& targetType = dynamic_cast<StructType const&>(_targetType);
 		auto& typeOnStack = dynamic_cast<StructType const&>(_typeOnStack);
-		solAssert(
-			targetType.location() != DataLocation::CallData
-		, "");
 		switch (targetType.location())
 		{
 		case DataLocation::Storage:
@@ -1159,7 +1184,7 @@ void CompilerUtils::convertType(
 					// stack: <memory ptr> <source ref> <memory ptr>
 					for (auto const& member: typeOnStack->members(nullptr))
 					{
-						solAssert(!member.type->containsNestedMapping(), "");
+						solAssert(!member.type->containsNestedMapping());
 						pair<u256, unsigned> const& offsets = typeOnStack->storageOffsetsOfMember(member.name);
 						_context << offsets.first << Instruction::DUP3 << Instruction::ADD;
 						_context << u256(offsets.second);
@@ -1186,7 +1211,7 @@ void CompilerUtils::convertType(
 			{
 				if (typeOnStack.isDynamicallyEncoded())
 				{
-					solAssert(m_context.useABICoderV2(), "");
+					solAssert(m_context.useABICoderV2());
 					m_context.callYulFunction(
 						m_context.utilFunctions().conversionFunction(typeOnStack, targetType),
 						1,
@@ -1208,7 +1233,8 @@ void CompilerUtils::convertType(
 			}
 			break;
 		case DataLocation::CallData:
-			solAssert(false, "Invalid type conversion target location CallData.");
+			solAssert(_typeOnStack == _targetType);
+			// nothing to do
 			break;
 		}
 		break;
@@ -1217,7 +1243,7 @@ void CompilerUtils::convertType(
 	{
 		TupleType const& sourceTuple = dynamic_cast<TupleType const&>(_typeOnStack);
 		TupleType const& targetTuple = dynamic_cast<TupleType const&>(_targetType);
-		solAssert(targetTuple.components().size() == sourceTuple.components().size(), "");
+		solAssert(targetTuple.components().size() == sourceTuple.components().size());
 		unsigned depth = sourceTuple.sizeOnStack();
 		for (size_t i = 0; i < sourceTuple.components().size(); ++i)
 		{
@@ -1225,7 +1251,7 @@ void CompilerUtils::convertType(
 			Type const* targetType = targetTuple.components()[i];
 			if (!sourceType)
 			{
-				solAssert(!targetType, "");
+				solAssert(!targetType);
 				continue;
 			}
 			unsigned sourceSize = sourceType->sizeOnStack();
@@ -1267,7 +1293,7 @@ void CompilerUtils::convertType(
 		break;
 	default:
 		// we used to allow conversions from function to address
-		solAssert(!(stackTypeCategory == Type::Category::Function && targetTypeCategory == Type::Category::Address), "");
+		solAssert(!(stackTypeCategory == Type::Category::Function && targetTypeCategory == Type::Category::Address));
 		if (stackTypeCategory == Type::Category::Function && targetTypeCategory == Type::Category::Function)
 		{
 			FunctionType const& typeOnStack = dynamic_cast<FunctionType const&>(_typeOnStack);
@@ -1324,14 +1350,14 @@ void CompilerUtils::pushZeroValue(Type const& _type)
 	}
 	if (referenceType->location() == DataLocation::CallData)
 	{
-		solAssert(referenceType->sizeOnStack() == 1 || referenceType->sizeOnStack() == 2, "");
+		solAssert(referenceType->sizeOnStack() == 1 || referenceType->sizeOnStack() == 2);
 		m_context << Instruction::CALLDATASIZE;
 		if (referenceType->sizeOnStack() == 2)
 			m_context << 0;
 		return;
 	}
 
-	solAssert(referenceType->location() == DataLocation::Memory, "");
+	solAssert(referenceType->location() == DataLocation::Memory);
 	if (auto arrayType = dynamic_cast<ArrayType const*>(&_type))
 		if (arrayType->isDynamicallySized())
 		{
@@ -1359,7 +1385,7 @@ void CompilerUtils::pushZeroValue(Type const& _type)
 				}
 			else if (auto arrayType = dynamic_cast<ArrayType const*>(type))
 			{
-				solAssert(!arrayType->isDynamicallySized(), "");
+				solAssert(!arrayType->isDynamicallySized());
 				if (arrayType->length() > 0)
 				{
 					_context << arrayType->length() << Instruction::SWAP1;
@@ -1459,7 +1485,7 @@ void CompilerUtils::popStackSlots(size_t _amount)
 
 void CompilerUtils::popAndJump(unsigned _toHeight, evmasm::AssemblyItem const& _jumpTo)
 {
-	solAssert(m_context.stackHeight() >= _toHeight, "");
+	solAssert(m_context.stackHeight() >= _toHeight);
 	unsigned amount = m_context.stackHeight() - _toHeight;
 	popStackSlots(amount);
 	m_context.appendJumpTo(_jumpTo);
@@ -1527,11 +1553,14 @@ void CompilerUtils::storeStringData(bytesConstRef _data)
 
 unsigned CompilerUtils::loadFromMemoryHelper(Type const& _type, bool _fromCalldata, bool _padToWords)
 {
-	solAssert(_type.isValueType(), "");
+	solAssert(_type.isValueType());
+	Type const* type = &_type;
+	if (auto const* userDefined = dynamic_cast<UserDefinedValueType const*>(type))
+		type = &userDefined->underlyingType();
 
-	unsigned numBytes = _type.calldataEncodedSize(_padToWords);
+	unsigned numBytes = type->calldataEncodedSize(_padToWords);
 	bool isExternalFunctionType = false;
-	if (auto const* funType = dynamic_cast<FunctionType const*>(&_type))
+	if (auto const* funType = dynamic_cast<FunctionType const*>(type))
 		if (funType->kind() == FunctionType::Kind::External)
 			isExternalFunctionType = true;
 	if (numBytes == 0)
@@ -1546,21 +1575,20 @@ unsigned CompilerUtils::loadFromMemoryHelper(Type const& _type, bool _fromCallda
 		splitExternalFunctionType(true);
 	else if (numBytes != 32)
 	{
-		bool leftAligned = _type.category() == Type::Category::FixedBytes;
 		// add leading or trailing zeros by dividing/multiplying depending on alignment
 		unsigned shiftFactor = (32 - numBytes) * 8;
 		rightShiftNumberOnStack(shiftFactor);
-		if (leftAligned)
+		if (type->leftAligned())
 		{
 			leftShiftNumberOnStack(shiftFactor);
 			cleanupNeeded = false;
 		}
-		else if (IntegerType const* intType = dynamic_cast<IntegerType const*>(&_type))
+		else if (IntegerType const* intType = dynamic_cast<IntegerType const*>(type))
 			if (!intType->isSigned())
 				cleanupNeeded = false;
 	}
 	if (_fromCalldata)
-		convertType(_type, _type, cleanupNeeded, false, true);
+		convertType(_type, *type, cleanupNeeded, false, true);
 
 	return numBytes;
 }
@@ -1577,7 +1605,7 @@ void CompilerUtils::cleanHigherOrderBits(IntegerType const& _typeOnStack)
 
 void CompilerUtils::leftShiftNumberOnStack(unsigned _bits)
 {
-	solAssert(_bits < 256, "");
+	solAssert(_bits < 256);
 	if (m_context.evmVersion().hasBitwiseShifting())
 		m_context << _bits << Instruction::SHL;
 	else
@@ -1586,7 +1614,7 @@ void CompilerUtils::leftShiftNumberOnStack(unsigned _bits)
 
 void CompilerUtils::rightShiftNumberOnStack(unsigned _bits)
 {
-	solAssert(_bits < 256, "");
+	solAssert(_bits < 256);
 	// NOTE: If we add signed right shift, SAR rounds differently than SDIV
 	if (m_context.evmVersion().hasBitwiseShifting())
 		m_context << _bits << Instruction::SHR;
@@ -1601,7 +1629,7 @@ unsigned CompilerUtils::prepareMemoryStore(Type const& _type, bool _padToWords, 
 		"Memory store of types with stack size != 1 not allowed (Type: " + _type.toString(true) + ")."
 	);
 
-	solAssert(!_type.isDynamicallyEncoded(), "");
+	solAssert(!_type.isDynamicallyEncoded());
 
 	unsigned numBytes = _type.calldataEncodedSize(_padToWords);
 
@@ -1615,12 +1643,10 @@ unsigned CompilerUtils::prepareMemoryStore(Type const& _type, bool _padToWords, 
 		"Memory store of more than 32 bytes requested (Type: " + _type.toString(true) + ")."
 	);
 
-	bool leftAligned = _type.category() == Type::Category::FixedBytes;
-
 	if (_cleanup)
 		convertType(_type, _type, true);
 
-	if (numBytes != 32 && !leftAligned && !_padToWords)
+	if (numBytes != 32 && !_type.leftAligned() && !_padToWords)
 		// shift the value accordingly before storing
 		leftShiftNumberOnStack((32 - numBytes) * 8);
 

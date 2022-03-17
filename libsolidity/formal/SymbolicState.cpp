@@ -78,10 +78,8 @@ void SymbolicState::reset()
 	m_state.reset();
 	m_tx.reset();
 	m_crypto.reset();
-	/// We don't reset m_abi's pointer nor clear m_abiMembers on purpose,
-	/// since it only helps to keep the already generated types.
-	solAssert(m_abi, "");
-	m_abi->reset();
+	if (m_abi)
+		m_abi->reset();
 }
 
 smtutil::Expression SymbolicState::balances() const
@@ -104,6 +102,14 @@ smtutil::Expression SymbolicState::blockhash(smtutil::Expression _blockNumber) c
 	return smtutil::Expression::select(m_tx.member("blockhash"), move(_blockNumber));
 }
 
+void SymbolicState::newBalances()
+{
+	auto tupleSort = dynamic_pointer_cast<TupleSort>(stateSort());
+	auto balanceSort = tupleSort->components.at(tupleSort->memberToIndex.at("balances"));
+	SymbolicVariable newBalances(balanceSort, "fresh_balances_" + to_string(m_context.newUniqueId()), m_context);
+	m_state.assignMember("balances", newBalances.currentValue());
+}
+
 void SymbolicState::transfer(smtutil::Expression _from, smtutil::Expression _to, smtutil::Expression _value)
 {
 	unsigned indexBefore = m_state.index();
@@ -121,6 +127,16 @@ void SymbolicState::transfer(smtutil::Expression _from, smtutil::Expression _to,
 	m_context.addAssertion(m_state.value() == newState);
 }
 
+void SymbolicState::addBalance(smtutil::Expression _address, smtutil::Expression _value)
+{
+	auto newBalances = smtutil::Expression::store(
+		balances(),
+		_address,
+		balance(_address) + move(_value)
+	);
+	m_state.assignMember("balances", newBalances);
+}
+
 smtutil::Expression SymbolicState::txMember(string const& _member) const
 {
 	return m_tx.member(_member);
@@ -128,7 +144,9 @@ smtutil::Expression SymbolicState::txMember(string const& _member) const
 
 smtutil::Expression SymbolicState::txTypeConstraints() const
 {
-	return smt::symbolicUnknownConstraints(m_tx.member("block.chainid"), TypeProvider::uint256()) &&
+	return
+		smt::symbolicUnknownConstraints(m_tx.member("block.basefee"), TypeProvider::uint256()) &&
+		smt::symbolicUnknownConstraints(m_tx.member("block.chainid"), TypeProvider::uint256()) &&
 		smt::symbolicUnknownConstraints(m_tx.member("block.coinbase"), TypeProvider::address()) &&
 		smt::symbolicUnknownConstraints(m_tx.member("block.difficulty"), TypeProvider::uint256()) &&
 		smt::symbolicUnknownConstraints(m_tx.member("block.gaslimit"), TypeProvider::uint256()) &&
@@ -179,16 +197,6 @@ void SymbolicState::prepareForSourceUnit(SourceUnit const& _source)
 
 /// Private helpers.
 
-void SymbolicState::addBalance(smtutil::Expression _address, smtutil::Expression _value)
-{
-	auto newBalances = smtutil::Expression::store(
-		balances(),
-		_address,
-		balance(_address) + move(_value)
-	);
-	m_state.assignMember("balances", newBalances);
-}
-
 void SymbolicState::buildABIFunctions(set<FunctionCall const*> const& _abiFunctions)
 {
 	map<string, SortPointer> functions;
@@ -203,7 +211,7 @@ void SymbolicState::buildABIFunctions(set<FunctionCall const*> const& _abiFuncti
 
 
 		auto argTypes = [](auto const& _args) {
-			return applyMap(_args, [](auto arg) { return arg->annotation().type; });
+			return util::applyMap(_args, [](auto arg) { return arg->annotation().type; });
 		};
 
 		/// Since each abi.* function may have a different number of input/output parameters,
@@ -227,6 +235,15 @@ void SymbolicState::buildABIFunctions(set<FunctionCall const*> const& _abiFuncti
 				outTypes.emplace_back(typeType->actualType());
 			else
 				solAssert(false, "Unexpected argument of abi.decode");
+		}
+		else if (t->kind() == FunctionType::Kind::ABIEncodeCall)
+		{
+			// abi.encodeCall : (functionPointer, tuple_of_args_or_one_non_tuple_arg(arguments)) -> bytes
+			solAssert(args.size() == 2, "Unexpected number of arguments for abi.encodeCall");
+
+			outTypes.emplace_back(TypeProvider::bytesMemory());
+			inTypes.emplace_back(args.at(0)->annotation().type);
+			inTypes.emplace_back(args.at(1)->annotation().type);
 		}
 		else
 		{
@@ -262,6 +279,8 @@ void SymbolicState::buildABIFunctions(set<FunctionCall const*> const& _abiFuncti
 					t = TypeProvider::uint256();
 				else if (t->category() == frontend::Type::Category::StringLiteral)
 					t = TypeProvider::bytesMemory();
+				else if (auto userType = dynamic_cast<UserDefinedValueType const*>(t))
+					t = &userType->underlyingType();
 		};
 		replaceTypes(inTypes);
 		replaceTypes(outTypes);

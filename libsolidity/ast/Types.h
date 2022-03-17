@@ -29,6 +29,7 @@
 #include <liblangutil/Exceptions.h>
 
 #include <libsolutil/Common.h>
+#include <libsolutil/Numeric.h>
 #include <libsolutil/CommonIO.h>
 #include <libsolutil/LazyInit.h>
 #include <libsolutil/Result.h>
@@ -174,7 +175,7 @@ public:
 	enum class Category
 	{
 		Address, Integer, RationalNumber, StringLiteral, Bool, FixedPoint, Array, ArraySlice,
-		FixedBytes, Contract, Struct, Function, Enum, Tuple,
+		FixedBytes, Contract, Struct, Function, Enum, UserDefinedValueType, Tuple,
 		Mapping, TypeType, Modifier, Magic, Module,
 		InaccessibleDynamic
 	};
@@ -367,6 +368,10 @@ public:
 	/// @param _inLibrary if set, returns types as used in a library, e.g. struct and contract types
 	/// are returned without modification.
 	virtual TypeResult interfaceType(bool /*_inLibrary*/) const { return nullptr; }
+
+	/// @returns the declaration of a user defined type (enum, struct, user defined value type).
+	/// Returns nullptr otherwise.
+	virtual Declaration const* typeDefinition() const { return nullptr; }
 
 	/// Clears all internally cached values (if any).
 	virtual void clearCache() const;
@@ -593,7 +598,7 @@ public:
 private:
 	rational m_value;
 
-	/// Bytes type to which the rational can be explicitly converted.
+	/// Bytes type to which the rational can be implicitly converted.
 	/// Empty for all rationals that are not directly parsed from hex literals.
 	Type const* m_compatibleBytesType;
 
@@ -836,8 +841,10 @@ public:
 
 	BoolResult validForLocation(DataLocation _loc) const override;
 
+	/// @returns true if this is a byte array.
+	bool isByteArray() const { return m_arrayKind == ArrayKind::Bytes; }
 	/// @returns true if this is a byte array or a string
-	bool isByteArray() const { return m_arrayKind != ArrayKind::Ordinary; }
+	bool isByteArrayOrString() const { return m_arrayKind != ArrayKind::Ordinary; }
 	/// @returns true if this is a string
 	bool isString() const { return m_arrayKind == ArrayKind::String; }
 	Type const* baseType() const { solAssert(!!m_baseType, ""); return m_baseType; }
@@ -848,11 +855,11 @@ public:
 	std::unique_ptr<ReferenceType> copyForLocation(DataLocation _location, bool _isPointer) const override;
 
 	/// The offset to advance in calldata to move from one array element to the next.
-	unsigned calldataStride() const { return isByteArray() ? 1 : m_baseType->calldataHeadSize(); }
+	unsigned calldataStride() const { return isByteArrayOrString() ? 1 : m_baseType->calldataHeadSize(); }
 	/// The offset to advance in memory to move from one array element to the next.
-	unsigned memoryStride() const { return isByteArray() ? 1 : m_baseType->memoryHeadSize(); }
+	unsigned memoryStride() const { return isByteArrayOrString() ? 1 : m_baseType->memoryHeadSize(); }
 	/// The offset to advance in storage to move from one array element to the next.
-	unsigned storageStride() const { return isByteArray() ? 1 : m_baseType->storageBytes(); }
+	unsigned storageStride() const { return isByteArrayOrString() ? 1 : m_baseType->storageBytes(); }
 
 	void clearCache() const override;
 
@@ -861,7 +868,6 @@ protected:
 	std::vector<Type const*> decomposition() const override { return {m_baseType}; }
 
 private:
-	/// String is interpreted as a subtype of Bytes.
 	enum class ArrayKind { Ordinary, Bytes, String };
 
 	bigint unlimitedStaticCalldataSize(bool _padded) const;
@@ -1002,6 +1008,8 @@ public:
 	Type const* encodingType() const override;
 	TypeResult interfaceType(bool _inLibrary) const override;
 
+	Declaration const* typeDefinition() const override;
+
 	BoolResult validForLocation(DataLocation _loc) const override;
 
 	bool recursive() const;
@@ -1067,13 +1075,90 @@ public:
 		return _inLibrary ? this : encodingType();
 	}
 
+	Declaration const* typeDefinition() const override;
+
 	EnumDefinition const& enumDefinition() const { return m_enum; }
 	/// @returns the value that the string has in the Enum
 	unsigned int memberValue(ASTString const& _member) const;
 	size_t numberOfMembers() const;
+	unsigned int minValue() const { return 0; }
+	unsigned int maxValue() const
+	{
+		solAssert(numberOfMembers() <= 256, "");
+		return static_cast<unsigned int>(numberOfMembers()) - 1;
+	}
 
 private:
 	EnumDefinition const& m_enum;
+};
+
+/**
+ * The type of a UserDefinedValueType.
+ */
+class UserDefinedValueType: public Type
+{
+public:
+	explicit UserDefinedValueType(UserDefinedValueTypeDefinition const& _definition):
+		m_definition(_definition)
+	{}
+
+	Category category() const override { return Category::UserDefinedValueType; }
+	Type const& underlyingType() const;
+	UserDefinedValueTypeDefinition const& definition() const { return m_definition; }
+
+	TypeResult binaryOperatorResult(Token, Type const*) const override { return nullptr; }
+	Type const* encodingType() const override { return &underlyingType(); }
+	TypeResult interfaceType(bool /* _inLibrary */) const override {return &underlyingType(); }
+
+	Declaration const* typeDefinition() const override;
+
+	std::string richIdentifier() const override;
+	bool operator==(Type const& _other) const override;
+
+	unsigned calldataEncodedSize(bool _padded) const override { return underlyingType().calldataEncodedSize(_padded); }
+
+	bool leftAligned() const override { return underlyingType().leftAligned(); }
+	bool canBeStored() const override { return underlyingType().canBeStored(); }
+	u256 storageSize() const override { return underlyingType().storageSize(); }
+	unsigned storageBytes() const override { return underlyingType().storageBytes(); }
+
+	bool isValueType() const override { return true; }
+	bool nameable() const override
+	{
+		solAssert(underlyingType().nameable(), "");
+		return true;
+	}
+
+	bool containsNestedMapping() const override
+	{
+		solAssert(nameable(), "Called for a non nameable type.");
+		// DeclarationTypeChecker::endVisit(VariableDeclaration const&)
+		// assumes that this will never be true.
+		solAssert(!underlyingType().containsNestedMapping(), "");
+		return false;
+	}
+
+	bool hasSimpleZeroValueInMemory() const override
+	{
+		solAssert(underlyingType().hasSimpleZeroValueInMemory(), "");
+		return true;
+	}
+
+	bool dataStoredIn(DataLocation _loc) const override
+	{
+		solAssert(!underlyingType().dataStoredIn(_loc), "");
+		return false;
+	}
+
+	std::string toString(bool _short) const override;
+	std::string canonicalName() const override;
+	std::string signatureInExternalFunction(bool) const override { solAssert(false, ""); }
+
+protected:
+	std::vector<std::tuple<std::string, Type const*>> makeStackItems() const override;
+
+private:
+	UserDefinedValueTypeDefinition const& m_definition;
 };
 
 /**
@@ -1144,6 +1229,8 @@ public:
 		RIPEMD160, ///< CALL to special contract for ripemd160
 		Event, ///< syntactic sugar for LOG*
 		Error, ///< creating an error instance in revert or require
+		Wrap, ///< customType.wrap(...) for user defined value types
+		Unwrap, ///< customType.unwrap(...) for user defined value types
 		SetGas, ///< modify the default gas value for the function call
 		SetValue, ///< modify the default value transfer for the function call
 		BlockHash, ///< BLOCKHASH
@@ -1152,12 +1239,14 @@ public:
 		ArrayPush, ///< .push() to a dynamically sized array in storage
 		ArrayPop, ///< .pop() from a dynamically sized array in storage
 		BytesConcat, ///< .concat() on bytes (type type)
+		StringConcat, ///< .concat() on string (type type)
 		ObjectCreation, ///< array creation using new
 		Assert, ///< assert()
 		Require, ///< require()
 		ABIEncode,
 		ABIEncodePacked,
 		ABIEncodeWithSelector,
+		ABIEncodeCall,
 		ABIEncodeWithSignature,
 		ABIDecode,
 		GasLeft, ///< gasleft()
@@ -1167,6 +1256,38 @@ public:
 		/// Cannot be called.
 		Declaration,
 	};
+	struct Options
+	{
+		/// true iff the function takes an arbitrary number of arguments of arbitrary types
+		bool arbitraryParameters = false;
+		/// true iff the gas value to be used is on the stack
+		bool gasSet = false;
+		/// true iff the value to be sent is on the stack
+		bool valueSet = false;
+		/// iff the salt value (for create2) to be used is on the stack
+		bool saltSet = false;
+		/// true iff the function is called as arg1.fun(arg2, ..., argn).
+		/// This is achieved through the "using for" directive.
+		bool bound = false;
+
+		static Options withArbitraryParameters()
+		{
+			Options result;
+			result.arbitraryParameters = true;
+			return result;
+		}
+		static Options fromFunctionType(FunctionType const& _type)
+		{
+			Options result;
+			result.arbitraryParameters = _type.takesArbitraryParameters();
+			result.gasSet = _type.gasSet();
+			result.valueSet = _type.valueSet();
+			result.saltSet = _type.saltSet();
+			result.bound = _type.bound();
+			return result;
+		}
+	};
+
 
 	/// Creates the type of a function.
 	/// @arg _kind must be Kind::Internal, Kind::External or Kind::Declaration.
@@ -1183,18 +1304,21 @@ public:
 		strings const& _parameterTypes,
 		strings const& _returnParameterTypes,
 		Kind _kind,
-		bool _arbitraryParameters = false,
-		StateMutability _stateMutability = StateMutability::NonPayable
+		StateMutability _stateMutability = StateMutability::NonPayable,
+		Options _options = Options{false, false, false, false, false}
 	): FunctionType(
 		parseElementaryTypeVector(_parameterTypes),
 		parseElementaryTypeVector(_returnParameterTypes),
 		strings(_parameterTypes.size(), ""),
 		strings(_returnParameterTypes.size(), ""),
 		_kind,
-		_arbitraryParameters,
-		_stateMutability
+		_stateMutability,
+		nullptr,
+		std::move(_options)
 	)
 	{
+		// In this constructor, only the "arbitrary Parameters" option should be used.
+		solAssert(!bound() && !gasSet() && !valueSet() && !saltSet());
 	}
 
 	/// Detailed constructor, use with care.
@@ -1204,13 +1328,9 @@ public:
 		strings _parameterNames = strings(),
 		strings _returnParameterNames = strings(),
 		Kind _kind = Kind::Internal,
-		bool _arbitraryParameters = false,
 		StateMutability _stateMutability = StateMutability::NonPayable,
 		Declaration const* _declaration = nullptr,
-		bool _gasSet = false,
-		bool _valueSet = false,
-		bool _saltSet = false,
-		bool _bound = false
+		Options _options = Options{false, false, false, false, false}
 	):
 		m_parameterTypes(std::move(_parameterTypes)),
 		m_returnParameterTypes(std::move(_returnParameterTypes)),
@@ -1218,12 +1338,8 @@ public:
 		m_returnParameterNames(std::move(_returnParameterNames)),
 		m_kind(_kind),
 		m_stateMutability(_stateMutability),
-		m_arbitraryParameters(_arbitraryParameters),
-		m_gasSet(_gasSet),
-		m_valueSet(_valueSet),
-		m_bound(_bound),
 		m_declaration(_declaration),
-		m_saltSet(_saltSet)
+		m_options(std::move(_options))
 	{
 		solAssert(
 			m_parameterNames.size() == m_parameterTypes.size(),
@@ -1234,7 +1350,7 @@ public:
 			"Return parameter names list must match return parameter types list!"
 		);
 		solAssert(
-			!m_bound || !m_parameterTypes.empty(),
+			!bound() || !m_parameterTypes.empty(),
 			"Attempted construction of bound function without self type"
 		);
 	}
@@ -1328,7 +1444,7 @@ public:
 	/// The only functions that do not pad are hash functions, the low-level call functions
 	/// and abi.encodePacked.
 	bool padArguments() const;
-	bool takesArbitraryParameters() const { return m_arbitraryParameters; }
+	bool takesArbitraryParameters() const { return m_options.arbitraryParameters; }
 	/// true iff the function takes a single bytes parameter and it is passed on without padding.
 	bool takesSinglePackedBytesParameter() const
 	{
@@ -1347,10 +1463,10 @@ public:
 		}
 	}
 
-	bool gasSet() const { return m_gasSet; }
-	bool valueSet() const { return m_valueSet; }
-	bool saltSet() const { return m_saltSet; }
-	bool bound() const { return m_bound; }
+	bool gasSet() const { return m_options.gasSet; }
+	bool valueSet() const { return m_options.valueSet; }
+	bool saltSet() const { return m_options.saltSet; }
+	bool bound() const { return m_options.bound; }
 
 	/// @returns a copy of this type, where gas or value are set manually. This will never set one
 	/// of the parameters to false.
@@ -1378,15 +1494,8 @@ private:
 	std::vector<std::string> m_returnParameterNames;
 	Kind const m_kind;
 	StateMutability m_stateMutability = StateMutability::NonPayable;
-	/// true if the function takes an arbitrary number of arguments of arbitrary types
-	bool const m_arbitraryParameters = false;
-	bool const m_gasSet = false; ///< true iff the gas value to be used is on the stack
-	bool const m_valueSet = false; ///< true iff the value to be sent is on the stack
-	/// true iff the function is called as arg1.fun(arg2, ..., argn).
-	/// This is achieved through the "using for" directive.
-	bool const m_bound = false;
 	Declaration const* m_declaration = nullptr;
-	bool m_saltSet = false; ///< true iff the salt value to be used is on the stack
+	Options const m_options;
 };
 
 /**

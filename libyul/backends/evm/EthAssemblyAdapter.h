@@ -24,7 +24,9 @@
 #include <libyul/backends/evm/AbstractAssembly.h>
 #include <libyul/AsmAnalysis.h>
 #include <liblangutil/SourceLocation.h>
+
 #include <functional>
+#include <limits>
 
 namespace solidity::evmasm
 {
@@ -53,10 +55,12 @@ public:
 	void appendJumpTo(LabelID _labelId, int _stackDiffAfter, JumpType _jumpType) override;
 	void appendJumpToIf(LabelID _labelId, JumpType _jumpType) override;
 	void appendAssemblySize() override;
-	std::pair<std::shared_ptr<AbstractAssembly>, SubID> createSubAssembly(std::string _name = {}) override;
+	std::pair<std::shared_ptr<AbstractAssembly>, SubID> createSubAssembly(bool _creation, std::string _name = {}) override;
 	void appendDataOffset(std::vector<SubID> const& _subPath) override;
 	void appendDataSize(std::vector<SubID> const& _subPath) override;
 	SubID appendData(bytes const& _data) override;
+
+	void appendToAuxiliaryData(bytes const& _data) override;
 
 	void appendImmutable(std::string const& _identifier) override;
 	void appendImmutableAssignment(std::string const& _identifier) override;

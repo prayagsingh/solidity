@@ -44,6 +44,9 @@ struct ModelCheckerContracts
 		return has(_source) && contracts.at(_source).count(_contract);
 	}
 
+	bool operator!=(ModelCheckerContracts const& _other) const noexcept { return !(*this == _other); }
+	bool operator==(ModelCheckerContracts const& _other) const noexcept { return contracts == _other.contracts; }
+
 	/// Represents which contracts should be analyzed by the SMTChecker
 	/// as the most derived.
 	/// The key is the source file. If the map is empty, all sources must be analyzed.
@@ -79,13 +82,45 @@ struct ModelCheckerEngine
 			return engineMap.at(_engine);
 		return {};
 	}
+
+	bool operator!=(ModelCheckerEngine const& _other) const noexcept { return !(*this == _other); }
+	bool operator==(ModelCheckerEngine const& _other) const noexcept { return bmc == _other.bmc && chc == _other.chc; }
+};
+
+enum class InvariantType { Contract, Reentrancy };
+
+struct ModelCheckerInvariants
+{
+	/// Adds the default targets, that is, all except underflow and overflow.
+	static ModelCheckerInvariants Default() { return *fromString("default"); }
+	/// Adds all targets, including underflow and overflow.
+	static ModelCheckerInvariants All() { return *fromString("all"); }
+	static ModelCheckerInvariants None() { return {{}}; }
+
+	static std::optional<ModelCheckerInvariants> fromString(std::string const& _invs);
+
+	bool has(InvariantType _inv) const { return invariants.count(_inv); }
+
+	/// @returns true if the @p _target is valid,
+	/// and false otherwise.
+	bool setFromString(std::string const& _target);
+
+	static std::map<std::string, InvariantType> const validInvariants;
+
+	bool operator!=(ModelCheckerInvariants const& _other) const noexcept { return !(*this == _other); }
+	bool operator==(ModelCheckerInvariants const& _other) const noexcept { return invariants == _other.invariants; }
+
+	std::set<InvariantType> invariants;
 };
 
 enum class VerificationTargetType { ConstantCondition, Underflow, Overflow, UnderOverflow, DivByZero, Balance, Assert, PopEmptyArray, OutOfBounds };
 
 struct ModelCheckerTargets
 {
+	/// Adds the default targets, that is, all except underflow and overflow.
 	static ModelCheckerTargets Default() { return *fromString("default"); }
+	/// Adds all targets, including underflow and overflow.
+	static ModelCheckerTargets All() { return *fromString("all"); }
 
 	static std::optional<ModelCheckerTargets> fromString(std::string const& _targets);
 
@@ -97,15 +132,44 @@ struct ModelCheckerTargets
 
 	static std::map<std::string, VerificationTargetType> const targetStrings;
 
+	static std::map<VerificationTargetType, std::string> const targetTypeToString;
+
+	bool operator!=(ModelCheckerTargets const& _other) const noexcept { return !(*this == _other); }
+	bool operator==(ModelCheckerTargets const& _other) const noexcept { return targets == _other.targets; }
+
 	std::set<VerificationTargetType> targets;
 };
 
 struct ModelCheckerSettings
 {
 	ModelCheckerContracts contracts = ModelCheckerContracts::Default();
+	/// Currently division and modulo are replaced by multiplication with slack vars, such that
+	/// a / b <=> a = b * k + m
+	/// where k and m are slack variables.
+	/// This is the default because Spacer prefers that over precise / and mod.
+	/// This option allows disabling this mechanism since other solvers
+	/// might prefer the precise encoding.
+	bool divModNoSlacks = false;
 	ModelCheckerEngine engine = ModelCheckerEngine::None();
+	ModelCheckerInvariants invariants = ModelCheckerInvariants::Default();
+	bool showUnproved = false;
+	smtutil::SMTSolverChoice solvers = smtutil::SMTSolverChoice::All();
 	ModelCheckerTargets targets = ModelCheckerTargets::Default();
 	std::optional<unsigned> timeout;
+
+	bool operator!=(ModelCheckerSettings const& _other) const noexcept { return !(*this == _other); }
+	bool operator==(ModelCheckerSettings const& _other) const noexcept
+	{
+		return
+			contracts == _other.contracts &&
+			divModNoSlacks == _other.divModNoSlacks &&
+			engine == _other.engine &&
+			invariants == _other.invariants &&
+			showUnproved == _other.showUnproved &&
+			solvers == _other.solvers &&
+			targets == _other.targets &&
+			timeout == _other.timeout;
+	}
 };
 
 }

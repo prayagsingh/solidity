@@ -52,7 +52,7 @@ bool PostTypeContractLevelChecker::check(ContractDefinition const& _contract)
 	for (ErrorDefinition const* error: _contract.interfaceErrors())
 	{
 		string signature = error->functionType(true)->externalSignature();
-		uint32_t hash = selectorFromSignature32(signature);
+		uint32_t hash = util::selectorFromSignature32(signature);
 		// Fail if there is a different signature for the same hash.
 		if (!errorHashes[hash].empty() && !errorHashes[hash].count(signature))
 		{
@@ -68,5 +68,5 @@ bool PostTypeContractLevelChecker::check(ContractDefinition const& _contract)
 			errorHashes[hash][signature] = error->location();
 	}
 
-	return Error::containsOnlyWarnings(m_errorReporter.errors());
+	return !Error::containsErrors(m_errorReporter.errors());
 }

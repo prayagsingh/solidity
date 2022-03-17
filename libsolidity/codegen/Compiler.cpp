@@ -38,7 +38,7 @@ void Compiler::compileContract(
 {
 	ContractCompiler runtimeCompiler(nullptr, m_runtimeContext, m_optimiserSettings);
 	runtimeCompiler.compileContract(_contract, _otherCompilers);
-	m_runtimeContext.appendAuxiliaryData(_metadata);
+	m_runtimeContext.appendToAuxiliaryData(_metadata);
 
 	// This might modify m_runtimeContext because it can access runtime functions at
 	// creation time.
@@ -59,9 +59,4 @@ std::shared_ptr<evmasm::Assembly> Compiler::runtimeAssemblyPtr() const
 {
 	solAssert(m_context.runtimeContext(), "");
 	return m_context.runtimeContext()->assemblyPtr();
-}
-
-evmasm::AssemblyItem Compiler::functionEntryLabel(FunctionDefinition const& _function) const
-{
-	return m_runtimeContext.functionEntryLabelIfExists(_function);
 }

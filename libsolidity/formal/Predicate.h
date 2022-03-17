@@ -21,11 +21,18 @@
 #include <libsolidity/formal/SymbolicVariables.h>
 #include <libsolidity/formal/SymbolicVariables.h>
 
+#include <libsolidity/ast/AST.h>
+
 #include <libsmtutil/Sorts.h>
 
 #include <map>
 #include <optional>
 #include <vector>
+
+namespace solidity::langutil
+{
+class CharStreamProvider;
+}
 
 namespace solidity::frontend
 {
@@ -138,11 +145,18 @@ public:
 	/// @returns true if this predicate represents an interface.
 	bool isInterface() const;
 
+	/// @returns true if this predicate represents a nondeterministic interface.
+	bool isNondetInterface() const;
+
 	PredicateType type() const { return m_type; }
 
 	/// @returns a formatted string representing a call to this predicate
 	/// with _args.
-	std::string formatSummaryCall(std::vector<smtutil::Expression> const& _args) const;
+	std::string formatSummaryCall(
+		std::vector<smtutil::Expression> const& _args,
+		langutil::CharStreamProvider const& _charStreamProvider,
+		bool _appendTxVars = false
+	) const;
 
 	/// @returns the values of the state variables from _args at the point
 	/// where this summary was reached.
@@ -158,6 +172,10 @@ public:
 
 	/// @returns the values of the local variables used by this predicate.
 	std::pair<std::vector<std::optional<std::string>>, std::vector<VariableDeclaration const*>> localVariableValues(std::vector<smtutil::Expression> const& _args) const;
+
+	/// @returns a substitution map from the arguments of _predExpr
+	/// to a Solidity-like expression.
+	std::map<std::string, std::string> expressionSubstitution(smtutil::Expression const& _predExpr) const;
 
 private:
 	/// @returns the formatted version of the given SMT expressions. Those expressions must be SMT constants.
@@ -197,6 +215,18 @@ private:
 	/// The scope stack when the predicate was created.
 	/// Used to identify the subset of variables in scope.
 	std::vector<ScopeOpener const*> const m_scopeStack;
+};
+
+struct PredicateCompare
+{
+	bool operator()(Predicate const* lhs, Predicate const* rhs) const
+	{
+		// We cannot use m_node->id() because different predicates may
+		// represent the same program node.
+		// We use the symbolic name since it is unique per predicate and
+		// the order does not really matter.
+		return lhs->functor().name < rhs->functor().name;
+	}
 };
 
 }

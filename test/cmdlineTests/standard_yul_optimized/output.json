@@ -1,10 +1,12 @@
 {"contracts":{"A":{"object":{"evm":{"assembly":"    /* \"A\":17:18   */
   0x00
-  0x00
     /* \"A\":11:19   */
+  dup1
   mload
     /* \"A\":20:40   */
   sstore
+    /* \"A\":0:42   */
+  stop
 ","bytecode":{"functionDebugData":{},"generatedSources":[],"linkReferences":{},"object":"<BYTECODE REMOVED>","opcodes":"<OPCODES REMOVED>","sourceMap":"<SOURCEMAP REMOVED>"}},"ir":"object \"object\" {
     code {
         let x := mload(0)
@@ -14,4 +16,4 @@
 ","irOptimized":"object \"object\" {
     code { { sstore(mload(0), 0) } }
 }
-"}}},"errors":[{"component":"general","formattedMessage":"Yul is still experimental. Please use the output with care.","message":"Yul is still experimental. Please use the output with care.","severity":"warning","type":"Warning"}]}
+"}}},}

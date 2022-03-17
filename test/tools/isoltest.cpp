@@ -119,10 +119,9 @@ public:
 		TestCreator _testCaseCreator,
 		TestOptions const& _options,
 		fs::path const& _basepath,
-		fs::path const& _path
+		fs::path const& _path,
+		solidity::test::Batcher& _batcher
 	);
-
-	static string editor;
 private:
 	enum class Request
 	{
@@ -145,7 +144,6 @@ private:
 	static bool m_exitRequested;
 };
 
-string TestTool::editor;
 bool TestTool::m_exitRequested = false;
 
 TestTool::Result TestTool::process()
@@ -204,15 +202,13 @@ TestTool::Result TestTool::process()
 	catch (std::exception const& _e)
 	{
 		AnsiColorized(cout, formatted, {BOLD, RED}) <<
-			"Exception during test" <<
-			(_e.what() ? ": " + string(_e.what()) : ".") <<
-			endl;
+			"Exception during test: " << boost::diagnostic_information(_e) << endl;
 		return Result::Exception;
 	}
 	catch (...)
 	{
 		AnsiColorized(cout, formatted, {BOLD, RED}) <<
-			"Unknown exception during test." << endl;
+			"Unknown exception during test: " << boost::current_exception_diagnostic_information() << endl;
 		return Result::Exception;
 	}
 }
@@ -258,7 +254,7 @@ TestTool::Request TestTool::handleResponse(bool _exception)
 			}
 		case 'e':
 			cout << endl << endl;
-			if (system((TestTool::editor + " \"" + m_path.string() + "\"").c_str()))
+			if (system((m_options.editor + " \"" + m_path.string() + "\"").c_str()))
 				cerr << "Error running editor command." << endl << endl;
 			return Request::Rerun;
 		case 'q':
@@ -274,7 +270,8 @@ TestStats TestTool::processPath(
 	TestCreator _testCaseCreator,
 	TestOptions const& _options,
 	fs::path const& _basepath,
-	fs::path const& _path
+	fs::path const& _path,
+	solidity::test::Batcher& _batcher
 )
 {
 	std::queue<fs::path> paths;
@@ -302,6 +299,11 @@ TestStats TestTool::processPath(
 		{
 			++testCount;
 			paths.pop();
+		}
+		else if (!_batcher.checkAndAdvance())
+		{
+			paths.pop();
+			++skippedCount;
 		}
 		else
 		{
@@ -378,7 +380,8 @@ std::optional<TestStats> runTestSuite(
 	TestOptions const& _options,
 	fs::path const& _basePath,
 	fs::path const& _subdirectory,
-	string const& _name
+	string const& _name,
+	solidity::test::Batcher& _batcher
 )
 {
 	fs::path testPath{_basePath / _subdirectory};
@@ -394,7 +397,8 @@ std::optional<TestStats> runTestSuite(
 		_testCaseCreator,
 		_options,
 		_basePath,
-		_subdirectory
+		_subdirectory,
+		_batcher
 	);
 
 	if (stats.skippedCount != stats.testCount)
@@ -420,21 +424,23 @@ std::optional<TestStats> runTestSuite(
 
 int main(int argc, char const *argv[])
 {
+	using namespace solidity::test;
+
 	try
 	{
 		setupTerminal();
 
 		{
-			auto options = std::make_unique<solidity::test::IsolTestOptions>(&TestTool::editor);
+			auto options = std::make_unique<IsolTestOptions>();
 
 			if (!options->parse(argc, argv))
 				return -1;
 
 			options->validate();
-			solidity::test::CommonOptions::setSingleton(std::move(options));
+			CommonOptions::setSingleton(std::move(options));
 		}
 
-		auto& options = dynamic_cast<solidity::test::IsolTestOptions const&>(solidity::test::CommonOptions::get());
+		auto& options = dynamic_cast<IsolTestOptions const&>(CommonOptions::get());
 
 		if (!solidity::test::loadVMs(options))
 			return 1;
@@ -442,8 +448,15 @@ int main(int argc, char const *argv[])
 		if (options.disableSemanticTests)
 			cout << endl << "--- SKIPPING ALL SEMANTICS TESTS ---" << endl << endl;
 
+		if (!options.enforceGasTest)
+			cout << "WARNING :: Gas Cost Expectations are not being enforced" << endl << endl;
+
 		TestStats global_stats{0, 0};
 		cout << "Running tests..." << endl << endl;
+
+		Batcher batcher(CommonOptions::get().selectedBatch, CommonOptions::get().batches);
+		if (CommonOptions::get().batches > 1)
+			cout << "Batch " << CommonOptions::get().selectedBatch << " out of " << CommonOptions::get().batches << endl;
 
 		// Actually run the tests.
 		// Interactive tests are added in InteractiveTests.h
@@ -460,7 +473,8 @@ int main(int argc, char const *argv[])
 				options,
 				options.testPath / ts.path,
 				ts.subpath,
-				ts.title
+				ts.title,
+				batcher
 			);
 			if (stats)
 				global_stats += *stats;

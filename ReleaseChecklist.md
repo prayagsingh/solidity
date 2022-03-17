@@ -26,7 +26,11 @@
  - [ ] Click the `PUBLISH RELEASE` button on the release page, creating the tag.
  - [ ] Wait for the CI runs on the tag itself.
 
-### Download Binaries
+### Upload Release Artifacts
+ - [ ] Switch to the tag that archives have to be created for.
+ - [ ] Create the ``prerelease.txt`` file: (``echo -n > prerelease.txt``).
+ - [ ] Run ``scripts/create_source_tarball.sh`` while being on the tag to create the source tarball. This will create the tarball in a directory called ``upload``.
+ - [ ] Take the tarball from the upload directory (its name should be ``solidity_x.x.x.tar.gz``, otherwise ``prerelease.txt`` was missing in the step before) and upload the source tarball to the release page.
  - [ ] Take the ``solc.exe`` binary from the ``b_win_release`` run of the released commit in circle-ci and add it to the release page as ``solc-windows.exe``.
  - [ ] Take the ``solc`` binary from the ``b_osx`` run of the released commit in circle-ci and add it to the release page as ``solc-macos``.
  - [ ] Take the ``solc`` binary from the ``b_ubu_static`` run of the released commit in circle-ci and add it to the release page as ``solc-static-linux``.
@@ -54,7 +58,8 @@
  - [ ] Run ``./scripts/docker_deploy_manual.sh v$VERSION``).
 
 ### PPA
- - [ ] Change ``scripts/release_ppa.sh`` to match your key's email and key id.
+ - [ ] Make sure the ``ethereum/cpp-build-deps`` PPA repository contains libz3-static-dev builds for all current versions of ubuntu. If not run ``scripts/deps-ppa/static-z3.sh`` (after changing email address and key id and adding the missing ubuntu version) and wait for the builds to succeed before continuing.
+ - [ ] Change ``scripts/release_ppa.sh`` to match your key's email and key id; double-check that ``DISTRIBUTIONS`` contains the most recent versions.
  - [ ] Run ``scripts/release_ppa.sh v$VERSION`` to create the PPA release (you need the relevant openssl key).
  - [ ] Wait for the ``~ethereum/ubuntu/ethereum-static`` PPA build to be finished and published for *all platforms*. SERIOUSLY: DO NOT PROCEED EARLIER!!! *After* the static builds are *published*, copy the static package to the ``~ethereum/ubuntu/ethereum`` PPA for the destination series ``Trusty``, ``Xenial`` and ``Bionic`` while selecting ``Copy existing binaries``.
 
@@ -65,7 +70,8 @@
 ### Release solc-js
  - [ ] Wait until solc-bin was properly deployed. You can test this via remix - a test run through remix is advisable anyway.
  - [ ] Increment the version number, create a pull request for that, merge it after tests succeeded.
- - [ ] Run ``npm publish`` in the updated ``solc-js`` repository.
+ - [ ] Run ``npm run build:tarball`` in the updated ``solc-js`` repository to create ``solc-<version>.tgz``. Inspect the tarball to ensure that it contains an up to date compiler binary.
+ - [ ] Run ``npm run publish:tarball`` to publish the newly created tarball.
  - [ ] Create a tag using ``git tag --annotate v$VERSION`` and push it with ``git push --tags``.
 
 ### Post-release

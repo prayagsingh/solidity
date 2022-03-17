@@ -20,6 +20,10 @@
 #include <test/libyul/Common.h>
 
 #include <libyul/AssemblyStack.h>
+#include <libyul/backends/evm/EthAssemblyAdapter.h>
+#include <libyul/backends/evm/EVMObjectCompiler.h>
+
+#include <libevmasm/Assembly.h>
 
 #include <liblangutil/SourceReferenceFormatter.h>
 
@@ -44,20 +48,35 @@ EVMCodeTransformTest::EVMCodeTransformTest(string const& _filename):
 
 TestCase::TestResult EVMCodeTransformTest::run(ostream& _stream, string const& _linePrefix, bool const _formatted)
 {
-	solidity::frontend::OptimiserSettings settings = solidity::frontend::OptimiserSettings::full();
+	solidity::frontend::OptimiserSettings settings = solidity::frontend::OptimiserSettings::none();
 	settings.runYulOptimiser = false;
 	settings.optimizeStackAllocation = m_stackOpt;
-	AssemblyStack stack(EVMVersion{}, AssemblyStack::Language::StrictAssembly, settings);
+	AssemblyStack stack(
+		EVMVersion{},
+		AssemblyStack::Language::StrictAssembly,
+		settings,
+		DebugInfoSelection::All()
+	);
 	if (!stack.parseAndAnalyze("", m_source))
 	{
 		AnsiColorized(_stream, _formatted, {formatting::BOLD, formatting::RED}) << _linePrefix << "Error parsing source." << endl;
-		SourceReferenceFormatter formatter(_stream, true, false);
-		for (auto const& error: stack.errors())
-			formatter.printErrorInformation(*error);
+		SourceReferenceFormatter{_stream, stack, true, false}
+			.printErrorInformation(stack.errors());
 		return TestResult::FatalError;
 	}
 
-	m_obtainedResult = evmasm::disassemble(stack.assemble(AssemblyStack::Machine::EVM).bytecode->bytecode, "\n");
+	evmasm::Assembly assembly{false, {}};
+	EthAssemblyAdapter adapter(assembly);
+	EVMObjectCompiler::compile(
+		*stack.parserResult(),
+		adapter,
+		EVMDialect::strictAssemblyForEVMObjects(EVMVersion{}),
+		m_stackOpt
+	);
+
+	std::ostringstream output;
+	output << assembly;
+	m_obtainedResult = output.str();
 
 	return checkResult(_stream, _linePrefix, _formatted);
 }

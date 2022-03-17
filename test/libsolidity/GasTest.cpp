@@ -34,7 +34,6 @@ using namespace solidity::frontend;
 using namespace solidity::frontend::test;
 using namespace solidity;
 using namespace std;
-namespace fs = boost::filesystem;
 using namespace boost::unit_test;
 
 GasTest::GasTest(string const& _filename):
@@ -43,7 +42,7 @@ GasTest::GasTest(string const& _filename):
 	m_source = m_reader.source();
 	m_optimise = m_reader.boolSetting("optimize", false);
 	m_optimiseYul = m_reader.boolSetting("optimize-yul", false);
-	m_optimiseRuns = m_reader.sizetSetting("optimize-runs", 200);
+	m_optimiseRuns = m_reader.sizetSetting("optimize-runs", OptimiserSettings{}.expectedExecutionsPerDeployment);
 	parseExpectations(m_reader.stream());
 }
 
@@ -119,9 +118,8 @@ TestCase::TestResult GasTest::run(ostream& _stream, string const& _linePrefix, b
 
 	if (!compiler().parseAndAnalyze() || !compiler().compile())
 	{
-		SourceReferenceFormatter formatter(_stream, _formatted, false);
-		for (auto const& error: compiler().errors())
-			formatter.printErrorInformation(*error);
+		SourceReferenceFormatter{_stream, compiler(), _formatted, false}
+			.printErrorInformation(compiler().errors());
 		return TestResult::FatalError;
 	}
 

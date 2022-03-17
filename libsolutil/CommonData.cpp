@@ -20,11 +20,12 @@
  * @date 2014
  */
 
+#include <libsolutil/Assertions.h>
 #include <libsolutil/CommonData.h>
 #include <libsolutil/Exceptions.h>
-#include <libsolutil/Assertions.h>
-#include <libsolutil/Keccak256.h>
 #include <libsolutil/FixedHash.h>
+#include <libsolutil/Keccak256.h>
+#include <libsolutil/StringUtils.h>
 
 #include <boost/algorithm/string.hpp>
 
@@ -154,9 +155,9 @@ string solidity::util::getChecksummedAddress(string const& _addr)
 		char addressCharacter = s[i];
 		uint8_t nibble = hash[i / 2u] >> (4u * (1u - (i % 2u))) & 0xf;
 		if (nibble >= 8)
-			ret += static_cast<char>(toupper(addressCharacter));
+			ret += toUpper(addressCharacter);
 		else
-			ret += static_cast<char>(tolower(addressCharacter));
+			ret += toLower(addressCharacter);
 	}
 	return ret;
 }
@@ -205,19 +206,13 @@ string solidity::util::escapeAndQuoteString(string const& _input)
 			out += "\\\\";
 		else if (c == '"')
 			out += "\\\"";
-		else if (c == '\b')
-			out += "\\b";
-		else if (c == '\f')
-			out += "\\f";
 		else if (c == '\n')
 			out += "\\n";
 		else if (c == '\r')
 			out += "\\r";
 		else if (c == '\t')
 			out += "\\t";
-		else if (c == '\v')
-			out += "\\v";
-		else if (!isprint(c, locale::classic()))
+		else if (!isPrint(c))
 		{
 			ostringstream o;
 			o << "\\x" << std::hex << setfill('0') << setw(2) << (unsigned)(unsigned char)(c);

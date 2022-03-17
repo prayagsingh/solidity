@@ -22,10 +22,6 @@
 
 #include <libevmasm/Instruction.h>
 
-#include <libsolutil/Common.h>
-#include <libsolutil/CommonIO.h>
-#include <functional>
-
 using namespace std;
 using namespace solidity;
 using namespace solidity::util;
@@ -84,6 +80,7 @@ std::map<std::string, Instruction> const solidity::evmasm::c_instructions =
 	{ "GASLIMIT", Instruction::GASLIMIT },
 	{ "CHAINID", Instruction::CHAINID },
 	{ "SELFBALANCE", Instruction::SELFBALANCE },
+	{ "BASEFEE", Instruction::BASEFEE },
 	{ "POP", Instruction::POP },
 	{ "MLOAD", Instruction::MLOAD },
 	{ "MSTORE", Instruction::MSTORE },
@@ -230,6 +227,7 @@ static std::map<Instruction, InstructionInfo> const c_instructionInfo =
 	{ Instruction::GASLIMIT,	{ "GASLIMIT",		0, 0, 1, false, Tier::Base } },
 	{ Instruction::CHAINID,		{ "CHAINID",		0, 0, 1, false, Tier::Base } },
 	{ Instruction::SELFBALANCE,	{ "SELFBALANCE",	0, 0, 1, false, Tier::Low } },
+	{ Instruction::BASEFEE,     { "BASEFEE",        0, 0, 1, false, Tier::Base } },
 	{ Instruction::POP,			{ "POP",			0, 1, 0, false, Tier::Base } },
 	{ Instruction::MLOAD,		{ "MLOAD",			0, 1, 1, true, Tier::VeryLow } },
 	{ Instruction::MSTORE,		{ "MSTORE",			0, 2, 0, true, Tier::VeryLow } },
@@ -323,53 +321,6 @@ static std::map<Instruction, InstructionInfo> const c_instructionInfo =
 	{ Instruction::SELFDESTRUCT,	{ "SELFDESTRUCT",		0, 1, 0, true, Tier::Special } }
 };
 
-void solidity::evmasm::eachInstruction(
-	bytes const& _mem,
-	function<void(Instruction,u256 const&)> const& _onInstruction
-)
-{
-	for (auto it = _mem.begin(); it < _mem.end(); ++it)
-	{
-		auto instr = Instruction(*it);
-		int additional = 0;
-		if (isValidInstruction(instr))
-			additional = instructionInfo(instr).additional;
-
-		u256 data;
-
-		// fill the data with the additional data bytes from the instruction stream
-		while (additional > 0 && std::next(it) < _mem.end())
-		{
-			data <<= 8;
-			data |= *++it;
-			--additional;
-		}
-
-		// pad the remaining number of additional octets with zeros
-		data <<= 8 * additional;
-
-		_onInstruction(instr, data);
-	}
-}
-
-string solidity::evmasm::disassemble(bytes const& _mem, string const& _delimiter)
-{
-	stringstream ret;
-	eachInstruction(_mem, [&](Instruction _instr, u256 const& _data) {
-		if (!isValidInstruction(_instr))
-			ret << "0x" << std::uppercase << std::hex << static_cast<int>(_instr) << _delimiter;
-		else
-		{
-			InstructionInfo info = instructionInfo(_instr);
-			ret << info.name;
-			if (info.additional)
-				ret << " 0x" << std::uppercase << std::hex << _data;
-			ret << _delimiter;
-		}
-	});
-	return ret.str();
-}
-
 InstructionInfo solidity::evmasm::instructionInfo(Instruction _inst)
 {
 	try
@@ -378,7 +329,7 @@ InstructionInfo solidity::evmasm::instructionInfo(Instruction _inst)
 	}
 	catch (...)
 	{
-		return InstructionInfo({"<INVALID_INSTRUCTION: " + toString((unsigned)_inst) + ">", 0, 0, 0, false, Tier::Invalid});
+		return InstructionInfo({"<INVALID_INSTRUCTION: " + to_string(static_cast<unsigned>(_inst)) + ">", 0, 0, 0, false, Tier::Invalid});
 	}
 }
 

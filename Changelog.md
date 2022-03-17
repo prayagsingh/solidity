@@ -1,4 +1,4 @@
-### 0.8.6 (unreleased)
+### 0.8.14 (unreleased)
 
 Language Features:
 
@@ -7,11 +7,237 @@ Compiler Features:
 
 
 Bugfixes:
+
+
+
+### 0.8.13 (2022-03-16)
+
+Important Bugfixes:
+ * Code Generator: Correctly encode literals used in ``abi.encodeCall`` in place of fixed bytes arguments.
+
+
+Language Features:
+ * General: Allow annotating inline assembly as memory-safe to allow optimizations and stack limit evasion that rely on respecting Solidity's memory model.
+ * General: ``using M for Type;`` is allowed at file level and ``M`` can now also be a brace-enclosed list of free functions or library functions.
+ * General: ``using ... for T global;`` is allowed at file level where the user-defined type ``T`` has been defined, resulting in the effect of the statement being available everywhere ``T`` is available.
+
+
+Compiler Features:
+ * Commandline Interface: Allow the use of ``--via-ir`` in place of ``--experimental-via-ir``.
+ * Compilation via Yul IR is no longer marked as experimental.
+ * JSON-AST: Added selector field for errors and events.
+ * LSP: Implements goto-definition.
+ * Peephole Optimizer: Optimize comparisons in front of conditional jumps and conditional jumps across a single unconditional jump.
+ * Yul EVM Code Transform: Avoid unnecessary ``pop``s on terminating control flow.
+ * Yul Optimizer: Remove ``sstore`` and ``mstore`` operations that are never read from.
+
+
+Bugfixes:
+ * General: Fix internal error for locales with unusual capitalization rules. Locale set in the environment is now completely ignored.
+ * Type Checker: Fix incorrect type checker errors when importing overloaded functions.
+ * Yul IR Code Generation: Optimize embedded creation code with correct settings. This fixes potential mismatches between the constructor code of a contract compiled in isolation and the bytecode in ``type(C).creationCode``, resp. the bytecode used for ``new C(...)``.
+
+
+### 0.8.12 (2022-02-16)
+
+Language Features:
+ * General: Add equality-comparison operators for external function types.
+ * General: Support ``ContractName.functionName`` for ``abi.encodeCall``, in addition to external function pointers.
+
+
+Compiler Features:
+ * Commandline Interface: Event and error signatures are also returned when using ``--hashes``.
+ * Yul Optimizer: Remove ``mstore`` and ``sstore`` operations if the slot already contains the same value.
+ * Yul: Emit immutable references for pure yul code when requested.
+
+
+
+Bugfixes:
+ * Antlr Grammar: Allow builtin names in ``yulPath`` to support ``.address`` in function pointers.
+ * Code Generator: Fix internal error when accessing the members of external functions occupying more than two stack slots.
+ * Code Generator: Fix internal error when doing an explicit conversion from ``string calldata`` to ``bytes``.
+ * Control Flow Graph: Perform proper virtual lookup for modifiers for uninitialized variable and unreachable code analysis.
+ * General: ``string.concat`` now properly takes strings as arguments and returns ``string memory``. It was accidentally introduced as a copy of ``bytes.concat`` before.
+ * Immutables: Fix wrong error when the constructor of a base contract uses ``return`` and the derived contract contains immutable variables.
+ * Inheritance: Consider functions in all ancestors during override analysis.
+ * IR Generator: Add missing cleanup during the conversion of fixed bytes types to smaller fixed bytes types.
+ * IR Generator: Add missing cleanup for indexed event arguments of value type.
+ * IR Generator: Fix internal error when copying reference types in calldata and storage to struct or array members in memory.
+ * IR Generator: Fix IR syntax error when copying storage arrays of structs containing functions.
+ * Natspec: Fix internal error when overriding a struct getter with a Natspec-documented return value and the name in the struct is different.
+ * Type Checker: Fix internal error when a constant variable declaration forward references a struct.
+ * Yul EVM Code Transform: Improved stack shuffling in corner cases.
+
+
+Solc-Js:
+ * The wrapper now requires at least nodejs v10.
+ * The code has been ported to TypeScript.
+
+
+Build System:
+ * Emscripten builds store the embedded WebAssembly binary in LZ4 compressed format and transparently decompress on loading.
+
+
+### 0.8.11 (2021-12-20)
+
+Language Features:
+ * General: New builtin function ``abi.encodeCall(functionPointer, (arg1, arg2, ...))`` that type-checks the arguments and returns the ABI-encoded function call data.
+
+
+Compiler Features:
+ * Commandline Interface: Add ``--lsp`` option to get ``solc`` to act as a Language Server (LSP) communicating over stdio.
+
+
+Bugfixes:
+ * Code Generator: Fix a crash when using ``@use-src`` and compiling from Yul to ewasm.
+ * SMTChecker: Fix internal error when an unsafe target is solved more than once and the counterexample messages are different.
+ * SMTChecker: Fix soundness of assigned storage/memory local pointers that were not erasing enough knowledge.
+ * Fix internal error when a function has a calldata struct argument with an internal type inside.
+ * IR Generator: Fix IR syntax error when copying storage arrays of functions.
+
+
+### 0.8.10 (2021-11-09)
+
+Language Features:
+ * Inline Assembly: Support ``.address`` and ``.selector`` on external function pointers to access their address and function selector.
+
+
+Compiler Features:
+ * Code Generator: Skip existence check for external contract if return data is expected. In this case, the ABI decoder will revert if the contract does not exist.
+ * Commandline Interface: Accept nested brackets in step sequences passed to ``--yul-optimizations``.
+ * Commandline Interface: Add ``--debug-info`` option for selecting how much extra debug information should be included in the produced EVM assembly and Yul code.
+ * Commandline Interface: Support ``--asm``, ``--bin``, ``--ir-optimized``, ``--ewasm`` and ``--ewasm-ir`` output selection options in assembler mode.
+ * Commandline Interface: Use different colors when printing errors, warnings and infos.
+ * JSON AST: Set absolute paths of imports earlier, in the ``parsing`` stage.
+ * SMTChecker: Output values for ``block.*``, ``msg.*`` and ``tx.*`` variables that are present in the called functions.
+ * SMTChecker: Report contract invariants and reentrancy properties. This can be enabled via the CLI option ``--model-checker-invariants`` or the Standard JSON option ``settings.modelChecker.invariants``.
+ * Standard JSON: Accept nested brackets in step sequences passed to ``settings.optimizer.details.yulDetails.optimizerSteps``.
+ * Standard JSON: Add ``settings.debug.debugInfo`` option for selecting how much extra debug information should be included in the produced EVM assembly and Yul code.
+ * Yul EVM Code Transform: Switch to new optimized code transform when compiling via Yul with enabled optimizer.
+ * Yul Optimizer: Take control-flow side-effects of user-defined functions into account in various optimizer steps.
+
+
+Bugfixes:
+ * Code Generator: Fix constructor source mappings for immutables.
+ * Commandline Interface: Disallow ``--error-recovery`` option outside of the compiler mode.
+ * Commandline Interface: Don't return zero exit code when writing linked files to disk fails.
+ * Commandline Interface: Fix extra newline character being appended to sources passed through standard input, affecting their hashes.
+ * Commandline Interface: Report output selection options unsupported by the selected input mode instead of ignoring them.
+ * Commandline Interface: When linking only accept exact matches for library names passed to the ``--libraries`` option. Library names not prefixed with a file name used to match any library with that name.
+ * SMTChecker: Fix internal error in magic type access (``block``, ``msg``, ``tx``).
+ * SMTChecker: Fix internal error in the CHC engine when passing gas in the function options.
+ * TypeChecker: Fix internal error when using arrays and structs with user defined value types before declaration.
+ * TypeChecker: Fix internal error when using user defined value types in public library functions.
+ * TypeChecker: Improved error message for constant variables with (nested) mapping types.
+ * Yul Assembler: Fix internal error when function names are not unique.
+ * Yul IR Generator: Do not output empty switches/if-bodies for empty contracts.
+
+
+Important Bugfixes in Experimental Features:
+ * Yul IR Generator: Changes to function return variables referenced in modifier invocation arguments were not properly forwarded if there was more than one return variable.
+
+
+Build System:
+ * Pass linker-only emscripten options only when linking.
+ * Remove obsolete compatibility workaround for emscripten builds.
+ * Update emscripten to version 2.0.33.
+
+
+### 0.8.9 (2021-09-29)
+
+Important Bugfixes:
+ * Immutables: Properly perform sign extension on signed immutables.
+ * User Defined Value Type: Fix storage layout of user defined value types for underlying types shorter than 32 bytes.
+
+
+Bugfixes:
+ * AST: Export ``canonicalName`` for ``UserDefinedValueTypeDefinition`` and ``ContractDefinition``.
+
+
+
+### 0.8.8 (2021-09-27)
+
+Language Features:
+ * Inheritance: A function that overrides only a single interface function does not require the ``override`` specifier.
+ * Type System: Support ``type(E).min`` and ``type(E).max`` for enums.
+ * User Defined Value Type: allows creating a zero cost abstraction over a value type with stricter type requirements.
+
+
+Compiler Features:
+ * Commandline Interface: Add ``--include-path`` option for specifying extra directories that may contain importable code (e.g. packaged third-party libraries).
+ * Commandline Interface: Do not implicitly run evm bytecode generation unless needed for the requested output.
+ * Commandline Interface: Normalize paths specified on the command line and make them relative for files located inside base path and/or include paths.
+ * Immutable variables can be read at construction time once they are initialized.
+ * SMTChecker: Add constraints to better correlate ``address(this).balance`` and ``msg.value``.
+ * SMTChecker: Support constants via modules.
+ * SMTChecker: Support low level ``call`` as external calls to unknown code.
+ * SMTChecker: Support the ``value`` option for external function calls.
+ * SMTChecker: Support user defined value types.
+
+
+Bugfixes:
+ * Code Generator: Fix ICE on assigning to calldata structs and statically-sized calldata arrays in inline assembly.
+ * Code Generator: Use stable source order for ABI functions.
+ * Commandline Interface: Disallow the ``--experimental-via-ir`` option in Standard JSON, Assembler and Linker modes.
+ * Commandline Interface: Fix resolution of paths whitelisted with ``--allowed-paths`` or implicitly due to base path, remappings and files being compiled. Correctly handle paths that do not match imports exactly due to being relative, non-normalized or empty.
+ * Commandline Interface: Report optimizer options as invalid in Standard JSON and linker modes instead of ignoring them.
+ * Name Resolver: Fix that when importing an aliased symbol using ``import {AliasedName} from "a.sol"`` it would use the original name of the symbol and not the aliased one.
+ * Opcode Optimizer: Prevent the optimizer from running multiple times to avoid potential bytecode differences for referenced code.
+ * Parser: Properly check for multiple SPDX license identifiers next to each other and validate them.
+ * SMTChecker: Fix BMC's constraints regarding internal functions.
+ * SMTChecker: Fix false negative caused by ``push`` on storage array references returned by internal functions.
+ * SMTChecker: Fix false positive in external calls from constructors.
+ * SMTChecker: Fix internal error on some multi-source uses of ``abi.*``, cryptographic functions and constants.
+ * Standard JSON: Fix non-fatal errors in Yul mode being discarded if followed by a fatal error.
+ * Type Checker: Correct wrong error message in inline assembly complaining about ``.slot`` or ``.offset`` not valid when actually ``.length`` was used.
+ * Type Checker: Disallow modifier declarations and definitions in interfaces.
+ * Yul Optimizer: Fix a crash in LoadResolver, when ``keccak256`` has particular non-identifier arguments.
+
+
+
+### 0.8.7 (2021-08-11)
+
+Language Features:
+ * Introduce global ``block.basefee`` for retrieving the base fee of the current block.
+ * Yul: Introduce builtin ``basefee()`` for retrieving the base fee of the current block.
+
+
+Compiler Features:
+ * AssemblyStack: Also run opcode-based optimizer when compiling Yul code.
+ * Commandline Interface: option ``--pretty-json`` works also with ``--standard--json``.
+ * EVM: Set the default EVM version to "London".
+ * SMTChecker: Do not check underflow and overflow by default.
+ * SMTChecker: Unproved targets are hidden by default, and the SMTChecker only states how many unproved targets there are. They can be listed using the command line option ``--model-checker-show-unproved`` or the JSON option ``settings.modelChecker.showUnproved``.
+ * SMTChecker: new setting to enable/disable encoding of division and modulo with slack variables. The command line option is ``--model-checker-div-mod-slacks`` and the JSON option is ``settings.modelChecker.divModWithSlacks``.
+ * Yul EVM Code Transform: Also pop unused argument slots for functions without return variables (under the same restrictions as for functions with return variables).
+ * Yul EVM Code Transform: Do not reuse stack slots that immediately become unreachable.
+ * Yul Optimizer: Move function arguments and return variables to memory with the experimental Stack Limit Evader (which is not enabled by default).
+
+
+Bugfixes:
+ * Code Generator: Fix crash when passing an empty string literal to ``bytes.concat()``.
+ * Code Generator: Fix internal compiler error when calling functions bound to calldata structs and arrays.
+ * Code Generator: Fix internal compiler error when passing a 32-byte hex literal or a zero literal to ``bytes.concat()`` by disallowing such literals.
+ * Commandline Interface: Apply ``--optimizer-runs`` option in assembly / yul mode.
+ * Commandline Interface: Fix crash when a directory path is passed to ``--standard-json``.
+ * Commandline Interface: Read JSON from standard input when ``--standard-json`` gets ``-`` as a file name.
+ * Standard JSON: Include source location for errors in files with empty name.
+ * Type Checker: Fix internal error and prevent static calls to unimplemented modifiers.
+ * Yul Code Generator: Fix internal compiler error when using a long literal with bitwise negation.
+ * Yul Code Generator: Fix source location references for calls to builtin functions.
+ * Yul Parser: Fix source location references for ``if`` statements.
+
+
+### 0.8.6 (2021-06-22)
+
+Language Features:
+ * Yul: Special meaning of ``".metadata"`` data object in Yul object.
+
+
+Bugfixes:
  * Control Flow Graph: Fix incorrectly reported unreachable code.
  * Solc-Js: When running ``solcjs`` without the ``--optimize`` flag, use ``settings.optimizer.enabled=false`` in Standard JSON instead of omitting the key.
- * Standard JSON: Omitting ``settings.optimizer.enabled`` was not equivalent to setting it to ``false``.
-   It meant disabling also the peephole optimizer and jumpdest remover which by default still run with ``enabled=false``.
-
+ * Standard JSON: Omitting ``settings.optimizer.enabled`` was not equivalent to setting it to ``false``. It meant disabling also the peephole optimizer and jumpdest remover which by default still run with ``enabled=false``.
 
 
 ### 0.8.5 (2021-06-10)
@@ -1993,7 +2219,7 @@ Features:
  * Internal: Inline assembly usable by the code generator.
  * Commandline interface: Using ``-`` as filename allows reading from stdin.
  * Interface JSON: Fallback function is now part of the ABI.
- * Interface: Version string now *semver* compatible.
+ * Interface: Version string now *SemVer* compatible.
  * Code generator: Do not provide "new account gas" if we know the called account exists.
 
 Bugfixes:

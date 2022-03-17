@@ -20,7 +20,8 @@
 
 #include <liblangutil/SourceLocation.h>
 #include <libsolutil/Algorithms.h>
-#include <boost/range/algorithm/sort.hpp>
+
+#include <range/v3/algorithm/sort.hpp>
 
 #include <functional>
 
@@ -35,7 +36,7 @@ bool ControlFlowAnalyzer::run()
 	for (auto& [pair, flow]: m_cfg.allFunctionFlows())
 		analyze(*pair.function, pair.contract, *flow);
 
-	return Error::containsOnlyWarnings(m_errorReporter.errors());
+	return !Error::containsErrors(m_errorReporter.errors());
 }
 
 void ControlFlowAnalyzer::analyze(FunctionDefinition const& _function, ContractDefinition const* _contract, FunctionFlow const& _flow)
@@ -128,7 +129,7 @@ void ControlFlowAnalyzer::checkUninitializedAccess(CFGNode const* _entry, CFGNod
 		// Propagate changes to all exits and queue them for traversal, if needed.
 		for (auto const& exit: currentNode->exits)
 			if (
-				auto exists = valueOrNullptr(nodeInfos, exit);
+				auto exists = util::valueOrNullptr(nodeInfos, exit);
 				nodeInfos[exit].propagateFrom(nodeInfo) || !exists
 			)
 				nodesToTraverse.insert(exit);
@@ -141,7 +142,7 @@ void ControlFlowAnalyzer::checkUninitializedAccess(CFGNode const* _entry, CFGNod
 			exitInfo.uninitializedVariableAccesses.begin(),
 			exitInfo.uninitializedVariableAccesses.end()
 		);
-		boost::range::sort(
+		ranges::sort(
 			uninitializedAccessesOrdered,
 			[](VariableOccurrence const* lhs, VariableOccurrence const* rhs) -> bool
 			{

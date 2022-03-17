@@ -50,24 +50,16 @@ public:
 	static void run(
 		Dialect const& _dialect,
 		Block& _ast,
-		std::set<YulString> _varsToAlwaysRematerialize = {}
-	);
-	static void run(
-		Dialect const& _dialect,
-		FunctionDefinition& _function,
-		std::set<YulString> _varsToAlwaysRematerialize = {}
+		std::set<YulString> _varsToAlwaysRematerialize = {},
+		bool _onlySelectedVariables = false
 	);
 
 protected:
 	Rematerialiser(
 		Dialect const& _dialect,
 		Block& _ast,
-		std::set<YulString> _varsToAlwaysRematerialize = {}
-	);
-	Rematerialiser(
-		Dialect const& _dialect,
-		FunctionDefinition& _function,
-		std::set<YulString> _varsToAlwaysRematerialize = {}
+		std::set<YulString> _varsToAlwaysRematerialize = {},
+		bool _onlySelectedVariables = false
 	);
 
 	using DataFlowAnalyzer::operator();
@@ -77,6 +69,7 @@ protected:
 
 	std::map<YulString, size_t> m_referenceCounts;
 	std::set<YulString> m_varsToAlwaysRematerialize;
+	bool m_onlySelectedVariables = false;
 };
 
 /**

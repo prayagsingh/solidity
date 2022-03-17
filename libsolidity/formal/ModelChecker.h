@@ -31,7 +31,9 @@
 #include <libsolidity/interface/ReadFile.h>
 
 #include <libsmtutil/SolverInterface.h>
+
 #include <liblangutil/ErrorReporter.h>
+#include <liblangutil/UniqueErrorReporter.h>
 
 namespace solidity::langutil
 {
@@ -49,10 +51,10 @@ public:
 	/// should be used, even if all are available. The default choice is to use all.
 	ModelChecker(
 		langutil::ErrorReporter& _errorReporter,
+		langutil::CharStreamProvider const& _charStreamProvider,
 		std::map<solidity::util::h256, std::string> const& _smtlib2Responses,
 		ModelCheckerSettings _settings = ModelCheckerSettings{},
-		ReadCallback::Callback const& _smtCallback = ReadCallback::Callback(),
-		smtutil::SMTSolverChoice _enabledSolvers = smtutil::SMTSolverChoice::All()
+		ReadCallback::Callback const& _smtCallback = ReadCallback::Callback()
 	);
 
 	// TODO This should be removed for 0.9.0.
@@ -73,7 +75,15 @@ public:
 	static smtutil::SMTSolverChoice availableSolvers();
 
 private:
+	/// Error reporter from CompilerStack.
+	/// We need to append m_uniqueErrorReporter
+	/// to this one when the analysis is done.
 	langutil::ErrorReporter& m_errorReporter;
+
+	/// Used by ModelChecker, SMTEncoder, BMC and CHC to avoid duplicates.
+	/// This is local to ModelChecker, so needs to be appended
+	/// to m_errorReporter at the end of the analysis.
+	langutil::UniqueErrorReporter m_uniqueErrorReporter;
 
 	ModelCheckerSettings m_settings;
 

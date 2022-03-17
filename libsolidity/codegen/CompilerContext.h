@@ -46,6 +46,7 @@
 #include <stack>
 #include <queue>
 #include <utility>
+#include <limits>
 
 namespace solidity::frontend
 {
@@ -64,7 +65,7 @@ public:
 		RevertStrings _revertStrings,
 		CompilerContext* _runtimeContext = nullptr
 	):
-		m_asm(std::make_shared<evmasm::Assembly>()),
+		m_asm(std::make_shared<evmasm::Assembly>(_runtimeContext != nullptr, std::string{})),
 		m_evmVersion(_evmVersion),
 		m_revertStrings(_revertStrings),
 		m_reservedMemory{0},
@@ -279,7 +280,7 @@ public:
 	void optimizeYul(yul::Object& _object, yul::EVMDialect const& _dialect, OptimiserSettings const& _optimiserSetting, std::set<yul::YulString> const& _externalIdentifiers = {});
 
 	/// Appends arbitrary data to the end of the bytecode.
-	void appendAuxiliaryData(bytes const& _data) { m_asm->appendAuxiliaryDataToEnd(_data); }
+	void appendToAuxiliaryData(bytes const& _data) { m_asm->appendToAuxiliaryData(_data); }
 
 	/// Run optimisation step.
 	void optimise(OptimiserSettings const& _settings) { m_asm->optimise(translateOptimiserSettings(_settings)); }

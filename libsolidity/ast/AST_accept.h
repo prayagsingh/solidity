@@ -58,13 +58,19 @@ void PragmaDirective::accept(ASTConstVisitor& _visitor) const
 
 void ImportDirective::accept(ASTVisitor& _visitor)
 {
-	_visitor.visit(*this);
+	if (_visitor.visit(*this))
+		for (SymbolAlias const& symbolAlias: symbolAliases())
+			if (symbolAlias.symbol)
+				symbolAlias.symbol->accept(_visitor);
 	_visitor.endVisit(*this);
 }
 
 void ImportDirective::accept(ASTConstVisitor& _visitor) const
 {
-	_visitor.visit(*this);
+	if (_visitor.visit(*this))
+		for (SymbolAlias const& symbolAlias: symbolAliases())
+			if (symbolAlias.symbol)
+				symbolAlias.symbol->accept(_visitor);
 	_visitor.endVisit(*this);
 }
 
@@ -164,11 +170,31 @@ void EnumValue::accept(ASTConstVisitor& _visitor) const
 	_visitor.endVisit(*this);
 }
 
+void UserDefinedValueTypeDefinition::accept(ASTConstVisitor& _visitor) const
+{
+	if (_visitor.visit(*this))
+	{
+		if (m_underlyingType)
+			m_underlyingType->accept(_visitor);
+	}
+	_visitor.endVisit(*this);
+}
+
+void UserDefinedValueTypeDefinition::accept(ASTVisitor& _visitor)
+{
+	if (_visitor.visit(*this))
+	{
+		if (m_underlyingType)
+			m_underlyingType->accept(_visitor);
+	}
+	_visitor.endVisit(*this);
+}
+
 void UsingForDirective::accept(ASTVisitor& _visitor)
 {
 	if (_visitor.visit(*this))
 	{
-		m_libraryName->accept(_visitor);
+		listAccept(functionsOrLibrary(), _visitor);
 		if (m_typeName)
 			m_typeName->accept(_visitor);
 	}
@@ -179,7 +205,7 @@ void UsingForDirective::accept(ASTConstVisitor& _visitor) const
 {
 	if (_visitor.visit(*this))
 	{
-		m_libraryName->accept(_visitor);
+		listAccept(functionsOrLibrary(), _visitor);
 		if (m_typeName)
 			m_typeName->accept(_visitor);
 	}

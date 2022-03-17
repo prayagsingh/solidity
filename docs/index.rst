@@ -1,19 +1,12 @@
 Solidity
 ========
 
-.. image:: logo.svg
-    :width: 120px
-    :alt: Solidity logo
-    :align: center
-
 Solidity is an object-oriented, high-level language for implementing smart
 contracts. Smart contracts are programs which govern the behaviour of accounts
 within the Ethereum state.
 
-Solidity is a `curly-bracket language <https://en.wikipedia.org/wiki/List_of_programming_languages_by_type#Curly-bracket_languages>`_.
-It is influenced by C++, Python and JavaScript, and is designed to target the Ethereum Virtual Machine (EVM).
-You can find more details about which languages Solidity has been inspired by in
-the :doc:`language influences <language-influences>` section.
+Solidity is a `curly-bracket language <https://en.wikipedia.org/wiki/List_of_programming_languages_by_type#Curly-bracket_languages>`_ designed to target the Ethereum Virtual Machine (EVM).
+It is influenced by C++, Python and JavaScript. You can find more details about which languages Solidity has been inspired by in the :doc:`language influences <language-influences>` section.
 
 Solidity is statically typed, supports inheritance, libraries and complex
 user-defined types among other features.
@@ -22,9 +15,11 @@ With Solidity you can create contracts for uses such as voting, crowdfunding, bl
 and multi-signature wallets.
 
 When deploying contracts, you should use the latest released
-version of Solidity. This is because breaking changes as well as
-new features and bug fixes are introduced regularly. We currently use
-a 0.x version number `to indicate this fast pace of change <https://semver.org/#spec-item-4>`_.
+version of Solidity. Apart from exceptional cases, only the latest version receives
+`security fixes <https://github.com/ethereum/solidity/security/policy#supported-versions>`_.
+Furthermore, breaking changes as well as
+new features are introduced regularly. We currently use
+a 0.y.z version number `to indicate this fast pace of change <https://semver.org/#spec-item-4>`_.
 
 .. warning::
 
@@ -33,6 +28,12 @@ a 0.x version number `to indicate this fast pace of change <https://semver.org/#
 
 Ideas for improving Solidity or this documentation are always welcome,
 read our :doc:`contributors guide <contributing>` for more details.
+
+.. Hint::
+
+  You can download this documentation as PDF, HTML or Epub by clicking on the versions
+  flyout menu in the bottom-left corner and selecting the preferred download format.
+
 
 Getting Started
 ---------------
@@ -87,24 +88,25 @@ our `Gitter channel <https://gitter.im/ethereum/solidity/>`_.
 Translations
 ------------
 
-Community volunteers help translate this documentation into several languages.
-They have varying degrees of completeness and up-to-dateness. The English
+Community contributors help translate this documentation into several languages.
+Note that they have varying degrees of completeness and up-to-dateness. The English
 version stands as a reference.
+
+You can switch between languages by clicking on the flyout menu in the bottom-left corner
+and selecting the preferred language.
+
+* `French <https://docs.soliditylang.org/fr/latest/>`_
+* `Indonesian <https://github.com/solidity-docs/id-indonesian>`_
+* `Persian <https://github.com/solidity-docs/fa-persian>`_
+* `Japanese <https://github.com/solidity-docs/ja-japanese>`_
+* `Korean <https://github.com/solidity-docs/ko-korean>`_
+* `Chinese <https://github.com/solidity-docs/zh-cn-chinese/>`_
 
 .. note::
 
    We recently set up a new GitHub organization and translation workflow to help streamline the
    community efforts. Please refer to the `translation guide <https://github.com/solidity-docs/translation-guide>`_
-   for information on how to contribute to the community translations moving forward.
-
-* `French <https://solidity-fr.readthedocs.io>`_ (in progress)
-* `Italian <https://github.com/damianoazzolini/solidity>`_ (in progress)
-* `Japanese <https://solidity-jp.readthedocs.io>`_
-* `Korean <https://solidity-kr.readthedocs.io>`_ (in progress)
-* `Russian <https://github.com/ethereum/wiki/wiki/%5BRussian%5D-%D0%A0%D1%83%D0%BA%D0%BE%D0%B2%D0%BE%D0%B4%D1%81%D1%82%D0%B2%D0%BE-%D0%BF%D0%BE-Solidity>`_ (rather outdated)
-* `Simplified Chinese <https://learnblockchain.cn/docs/solidity/>`_ (in progress)
-* `Spanish <https://solidity-es.readthedocs.io>`_
-* `Turkish <https://github.com/denizozzgur/Solidity_TR/blob/master/README.md>`_ (partial)
+   for information on how to start a new language or contribute to the community translations.
 
 Contents
 ========
@@ -139,6 +141,7 @@ Contents
 
    using-the-compiler.rst
    analysing-compilation-output.rst
+   ir-breaking-changes.rst
 
 .. toctree::
    :maxdepth: 2

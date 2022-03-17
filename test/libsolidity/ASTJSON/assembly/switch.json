@@ -14,8 +14,10 @@
     {
       "abstract": false,
       "baseContracts": [],
+      "canonicalName": "C",
       "contractDependencies": [],
       "contractKind": "contract",
+      "fullyImplemented": true,
       "id": 6,
       "linearizedBaseContracts":
       [
@@ -55,7 +57,7 @@
                       "variables":
                       [
                         {
-                          "name": "f",
+                          "name": "v",
                           "nodeType": "YulTypedName",
                           "src": "79:1:1",
                           "type": ""
@@ -86,7 +88,7 @@
                                 "variableNames":
                                 [
                                   {
-                                    "name": "f",
+                                    "name": "v",
                                     "nodeType": "YulIdentifier",
                                     "src": "141:1:1"
                                   }
@@ -126,7 +128,7 @@
                                 "variableNames":
                                 [
                                   {
-                                    "name": "f",
+                                    "name": "v",
                                     "nodeType": "YulIdentifier",
                                     "src": "172:1:1"
                                   }
@@ -157,29 +159,14 @@
                   ]
                 },
                 "evmVersion": %EVMVERSION%,
-                "externalReferences":
-                [
-                  {
-                    "declaration": 5,
-                    "isOffset": false,
-                    "isSlot": false,
-                    "src": "141:1:1",
-                    "valueSize": 18446744073709551615
-                  },
-                  {
-                    "declaration": 5,
-                    "isOffset": false,
-                    "isSlot": false,
-                    "src": "172:1:1",
-                    "valueSize": 18446744073709551615
-                  }
-                ],
+                "externalReferences": [],
                 "id": 3,
                 "nodeType": "InlineAssembly",
                 "src": "52:138:1"
               }
             ]
           },
+          "functionSelector": "26121ff0",
           "id": 5,
           "implemented": true,
           "kind": "function",

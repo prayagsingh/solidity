@@ -25,6 +25,7 @@
 #include <liblangutil/ErrorReporter.h>
 
 #include <libsolutil/Algorithms.h>
+#include <libsolutil/Visitor.h>
 
 #include <range/v3/view/transform.hpp>
 
@@ -100,7 +101,6 @@ bool DeclarationTypeChecker::visit(StructDefinition const& _struct)
 		m_recursiveStructSeen = false;
 		member->accept(*this);
 		solAssert(member->annotation().type, "");
-		solAssert(member->annotation().type->canBeStored(), "Type cannot be used in struct.");
 		if (m_recursiveStructSeen)
 			hasRecursiveChild = true;
 	}
@@ -140,6 +140,30 @@ bool DeclarationTypeChecker::visit(StructDefinition const& _struct)
 	return false;
 }
 
+void DeclarationTypeChecker::endVisit(UserDefinedValueTypeDefinition const& _userDefined)
+{
+	TypeName const* typeName = _userDefined.underlyingType();
+	solAssert(typeName, "");
+	if (!dynamic_cast<ElementaryTypeName const*>(typeName))
+		m_errorReporter.fatalTypeError(
+			8657_error,
+			typeName->location(),
+			"The underlying type for a user defined value type has to be an elementary value type."
+		);
+
+	Type const* type = typeName->annotation().type;
+	solAssert(type, "");
+	solAssert(!dynamic_cast<UserDefinedValueType const*>(type), "");
+	if (!type->isValueType())
+		m_errorReporter.typeError(
+			8129_error,
+			_userDefined.location(),
+			"The underlying type of the user defined value type \"" +
+			_userDefined.name() +
+			"\" is not a value type."
+		);
+}
+
 void DeclarationTypeChecker::endVisit(UserDefinedTypeName const& _typeName)
 {
 	if (_typeName.annotation().type)
@@ -158,6 +182,8 @@ void DeclarationTypeChecker::endVisit(UserDefinedTypeName const& _typeName)
 		_typeName.annotation().type = TypeProvider::enumType(*enumDef);
 	else if (ContractDefinition const* contract = dynamic_cast<ContractDefinition const*>(declaration))
 		_typeName.annotation().type = TypeProvider::contract(*contract);
+	else if (auto userDefinedValueType = dynamic_cast<UserDefinedValueTypeDefinition const*>(declaration))
+		_typeName.annotation().type = TypeProvider::userDefinedValueType(*userDefinedValueType);
 	else
 	{
 		_typeName.annotation().type = TypeProvider::emptyTuple();
@@ -227,12 +253,13 @@ void DeclarationTypeChecker::endVisit(Mapping const& _mapping)
 		{
 			case Type::Category::Enum:
 			case Type::Category::Contract:
+			case Type::Category::UserDefinedValueType:
 				break;
 			default:
 				m_errorReporter.fatalTypeError(
 					7804_error,
 					typeName->location(),
-					"Only elementary types, contract types or enums are allowed as mapping keys."
+					"Only elementary types, user defined value types, contract types or enums are allowed as mapping keys."
 				);
 				break;
 		}
@@ -262,7 +289,6 @@ void DeclarationTypeChecker::endVisit(ArrayTypeName const& _typeName)
 		return;
 	}
 
-	solAssert(baseType->storageBytes() != 0, "Illegal base type of storage size zero for array.");
 	if (Expression const* length = _typeName.length())
 	{
 		optional<rational> lengthValue;
@@ -416,9 +442,9 @@ void DeclarationTypeChecker::endVisit(VariableDeclaration const& _variable)
 	{
 		bool allowed = false;
 		if (auto arrayType = dynamic_cast<ArrayType const*>(type))
-			allowed = arrayType->isByteArray();
+			allowed = arrayType->isByteArrayOrString();
 		if (!allowed)
-			m_errorReporter.fatalDeclarationError(9259_error, _variable.location(), "Constants of non-value type not yet implemented.");
+			m_errorReporter.fatalTypeError(9259_error, _variable.location(), "Only constants of value type and byte array type are implemented.");
 	}
 
 	_variable.annotation().type = type;
@@ -426,12 +452,39 @@ void DeclarationTypeChecker::endVisit(VariableDeclaration const& _variable)
 
 bool DeclarationTypeChecker::visit(UsingForDirective const& _usingFor)
 {
-	ContractDefinition const* library = dynamic_cast<ContractDefinition const*>(
-		_usingFor.libraryName().annotation().referencedDeclaration
-	);
+	if (_usingFor.usesBraces())
+	{
+		for (ASTPointer<IdentifierPath> const& function: _usingFor.functionsOrLibrary())
+			if (auto functionDefinition = dynamic_cast<FunctionDefinition const*>(function->annotation().referencedDeclaration))
+			{
+				if (!functionDefinition->isFree() && !(
+					dynamic_cast<ContractDefinition const*>(functionDefinition->scope()) &&
+					dynamic_cast<ContractDefinition const*>(functionDefinition->scope())->isLibrary()
+				))
+					m_errorReporter.typeError(
+						4167_error,
+						function->location(),
+						"Only file-level functions and library functions can be bound to a type in a \"using\" statement"
+					);
+			}
+			else
+				m_errorReporter.fatalTypeError(8187_error, function->location(), "Expected function name." );
+	}
+	else
+	{
+		ContractDefinition const* library = dynamic_cast<ContractDefinition const*>(
+			_usingFor.functionsOrLibrary().front()->annotation().referencedDeclaration
+		);
+		if (!library || !library->isLibrary())
+			m_errorReporter.fatalTypeError(
+				4357_error,
+				_usingFor.functionsOrLibrary().front()->location(),
+				"Library name expected. If you want to attach a function, use '{...}'."
+			);
+	}
 
-	if (!library || !library->isLibrary())
-		m_errorReporter.fatalTypeError(4357_error, _usingFor.libraryName().location(), "Library name expected.");
+	// We do not visit _usingFor.functions() because it will lead to an error since
+	// library names cannot be mentioned stand-alone.
 
 	if (_usingFor.typeName())
 		_usingFor.typeName()->accept(*this);

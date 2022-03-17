@@ -15,10 +15,10 @@ inheritable properties of contracts and may be overridden by derived contracts, 
 if they are marked ``virtual``. For details, please see
 :ref:`Modifier Overriding <modifier-overriding>`.
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
-    pragma solidity >0.7.0 <0.9.0;
+    pragma solidity >=0.7.1 <0.9.0;
 
     contract owned {
         constructor() { owner = payable(msg.sender); }
@@ -72,8 +72,8 @@ if they are marked ``virtual``. For details, please see
             registeredAddresses[msg.sender] = true;
         }
 
-        function changePrice(uint _price) public onlyOwner {
-            price = _price;
+        function changePrice(uint price_) public onlyOwner {
+            price = price_;
         }
     }
 

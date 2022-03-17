@@ -33,6 +33,7 @@
 #include <libevmasm/Instruction.h>
 #include <libsolutil/FixedHash.h>
 #include <libsolutil/LazyInit.h>
+#include <libsolutil/Visitor.h>
 
 #include <json/json.h>
 
@@ -246,7 +247,10 @@ public:
 
 	/// @returns the declared name.
 	ASTString const& name() const { return *m_name; }
+
+	/// @returns the location of the declared name itself or empty location if not available or unknown.
 	SourceLocation const& nameLocation() const noexcept { return m_nameLocation; }
+
 	bool noVisibilitySpecified() const { return m_visibility == Visibility::Default; }
 	Visibility visibility() const { return m_visibility == Visibility::Default ? defaultVisibility() : m_visibility; }
 	bool isPublic() const { return visibility() >= Visibility::Public; }
@@ -516,7 +520,8 @@ public:
 		return ranges::subrange<decltype(b)>(b, e) | ranges::views::values;
 	}
 	std::vector<EventDefinition const*> events() const { return filteredNodes<EventDefinition>(m_subNodes); }
-	std::vector<EventDefinition const*> const& interfaceEvents() const;
+	std::vector<EventDefinition const*> const& definedInterfaceEvents() const;
+	std::vector<EventDefinition const*> const usedInterfaceEvents() const;
 	/// @returns all errors defined in this contract or any base contract
 	/// and all errors referenced during execution.
 	/// @param _requireCallGraph if false, do not fail if the call graph has not been computed yet.
@@ -626,9 +631,20 @@ private:
 };
 
 /**
- * `using LibraryName for uint` will attach all functions from the library LibraryName
- * to `uint` if the first parameter matches the type. `using LibraryName for *` attaches
- * the function to any matching type.
+ * Using for directive:
+ *
+ * 1. `using LibraryName for T` attaches all functions from the library `LibraryName` to the type `T`
+ * 2. `using LibraryName for *` attaches to all types.
+ * 3. `using {f1, f2, ..., fn} for T` attaches the functions `f1`, `f2`, ...,
+ *     `fn`, respectively to `T`.
+ *
+ * For version 3, T has to be implicitly convertible to the first parameter type of
+ * all functions, and this is checked at the point of the using statement. For versions 1 and
+ * 2, this check is only done when a function is called.
+ *
+ * Finally, `using {f1, f2, ..., fn} for T global` is also valid at file level, as long as T is
+ * a user-defined type defined in the same file at file level. In this case, the methods are
+ * attached to all objects of that type regardless of scope.
  */
 class UsingForDirective: public ASTNode
 {
@@ -636,24 +652,36 @@ public:
 	UsingForDirective(
 		int64_t _id,
 		SourceLocation const& _location,
-		ASTPointer<IdentifierPath> _libraryName,
-		ASTPointer<TypeName> _typeName
+		std::vector<ASTPointer<IdentifierPath>> _functions,
+		bool _usesBraces,
+		ASTPointer<TypeName> _typeName,
+		bool _global
 	):
-		ASTNode(_id, _location), m_libraryName(std::move(_libraryName)), m_typeName(std::move(_typeName))
+		ASTNode(_id, _location),
+		m_functions(_functions),
+		m_usesBraces(_usesBraces),
+		m_typeName(std::move(_typeName)),
+		m_global{_global}
 	{
-		solAssert(m_libraryName != nullptr, "Name cannot be null.");
 	}
 
 	void accept(ASTVisitor& _visitor) override;
 	void accept(ASTConstVisitor& _visitor) const override;
 
-	IdentifierPath const& libraryName() const { return *m_libraryName; }
 	/// @returns the type name the library is attached to, null for `*`.
 	TypeName const* typeName() const { return m_typeName.get(); }
 
+	/// @returns a list of functions or the single library.
+	std::vector<ASTPointer<IdentifierPath>> const& functionsOrLibrary() const { return m_functions; }
+	bool usesBraces() const { return m_usesBraces; }
+	bool global() const { return m_global; }
+
 private:
-	ASTPointer<IdentifierPath> m_libraryName;
+	/// Either the single library or a list of functions.
+	std::vector<ASTPointer<IdentifierPath>> m_functions;
+	bool m_usesBraces;
 	ASTPointer<TypeName> m_typeName;
+	bool m_global = false;
 };
 
 class StructDefinition: public Declaration, public ScopeOpener
@@ -724,6 +752,40 @@ public:
 	void accept(ASTConstVisitor& _visitor) const override;
 
 	Type const* type() const override;
+};
+
+/**
+ * User defined value types, i.e., custom types, for example, `type MyInt is int`. Allows creating a
+ * zero cost abstraction over value type with stricter type requirements.
+ */
+class UserDefinedValueTypeDefinition: public Declaration
+{
+public:
+	UserDefinedValueTypeDefinition(
+		int64_t _id,
+		SourceLocation const& _location,
+		ASTPointer<ASTString> _name,
+		SourceLocation _nameLocation,
+		ASTPointer<TypeName> _underlyingType
+	):
+		Declaration(_id, _location, _name, std::move(_nameLocation), Visibility::Default),
+		m_underlyingType(std::move(_underlyingType))
+	{
+	}
+
+	void accept(ASTVisitor& _visitor) override;
+	void accept(ASTConstVisitor& _visitor) const override;
+
+	Type const* type() const override;
+
+	TypeDeclarationAnnotation& annotation() const override;
+
+	TypeName const* underlyingType() const { return m_underlyingType.get(); }
+	bool isVisibleViaContractTypeAccess() const override { return true; }
+
+private:
+	/// The name of the underlying type
+	ASTPointer<TypeName> m_underlyingType;
 };
 
 /**
@@ -1425,19 +1487,26 @@ public:
 		SourceLocation const& _location,
 		ASTPointer<ASTString> const& _docString,
 		yul::Dialect const& _dialect,
+		ASTPointer<std::vector<ASTPointer<ASTString>>> _flags,
 		std::shared_ptr<yul::Block> _operations
 	):
-		Statement(_id, _location, _docString), m_dialect(_dialect), m_operations(std::move(_operations)) {}
+		Statement(_id, _location, _docString),
+		m_dialect(_dialect),
+		m_flags(move(_flags)),
+		m_operations(std::move(_operations))
+	{}
 	void accept(ASTVisitor& _visitor) override;
 	void accept(ASTConstVisitor& _visitor) const override;
 
 	yul::Dialect const& dialect() const { return m_dialect; }
 	yul::Block const& operations() const { return *m_operations; }
+	ASTPointer<std::vector<ASTPointer<ASTString>>> const& flags() const { return m_flags; }
 
 	InlineAssemblyAnnotation& annotation() const override;
 
 private:
 	yul::Dialect const& m_dialect;
+	ASTPointer<std::vector<ASTPointer<ASTString>>> m_flags;
 	std::shared_ptr<yul::Block> m_operations;
 };
 

@@ -22,7 +22,7 @@ raised, the previous highest bidder gets their money back.  After the end of
 the bidding period, the contract has to be called manually for the beneficiary
 to receive their money - contracts cannot activate themselves.
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
     pragma solidity ^0.8.4;
@@ -64,22 +64,22 @@ to receive their money - contracts cannot activate themselves.
         /// The function auctionEnd has already been called.
         error AuctionEndAlreadyCalled();
 
-        /// Create a simple auction with `_biddingTime`
+        /// Create a simple auction with `biddingTime`
         /// seconds bidding time on behalf of the
-        /// beneficiary address `_beneficiary`.
+        /// beneficiary address `beneficiaryAddress`.
         constructor(
-            uint _biddingTime,
-            address payable _beneficiary
+            uint biddingTime,
+            address payable beneficiaryAddress
         ) {
-            beneficiary = _beneficiary;
-            auctionEndTime = block.timestamp + _biddingTime;
+            beneficiary = beneficiaryAddress;
+            auctionEndTime = block.timestamp + biddingTime;
         }
 
         /// Bid on the auction with the value sent
         /// together with this transaction.
         /// The value will only be refunded if the
         /// auction is not won.
-        function bid() public payable {
+        function bid() external payable {
             // No arguments are necessary, all
             // information is already part of
             // the transaction. The keyword payable
@@ -113,7 +113,7 @@ to receive their money - contracts cannot activate themselves.
         }
 
         /// Withdraw a bid that was overbid.
-        function withdraw() public returns (bool) {
+        function withdraw() external returns (bool) {
             uint amount = pendingReturns[msg.sender];
             if (amount > 0) {
                 // It is important to set this to zero because the recipient
@@ -121,6 +121,9 @@ to receive their money - contracts cannot activate themselves.
                 // before `send` returns.
                 pendingReturns[msg.sender] = 0;
 
+                // msg.sender is not of type `address payable` and must be
+                // explicitly converted using `payable(msg.sender)` in order
+                // use the member function `send()`.
                 if (!payable(msg.sender).send(amount)) {
                     // No need to call throw here, just reset the amount owing
                     pendingReturns[msg.sender] = amount;
@@ -132,7 +135,7 @@ to receive their money - contracts cannot activate themselves.
 
         /// End the auction and send the highest bid
         /// to the beneficiary.
-        function auctionEnd() public {
+        function auctionEnd() external {
             // It is a good guideline to structure functions that interact
             // with other contracts (i.e. they call functions or send Ether)
             // into three phases:
@@ -191,7 +194,8 @@ transfers): Bidders can confuse competition by placing several high or low
 invalid bids.
 
 
-::
+.. code-block:: solidity
+    :force:
 
     // SPDX-License-Identifier: GPL-3.0
     pragma solidity ^0.8.4;
@@ -231,26 +235,26 @@ invalid bids.
         // functions. `onlyBefore` is applied to `bid` below:
         // The new function body is the modifier's body where
         // `_` is replaced by the old function body.
-        modifier onlyBefore(uint _time) {
-            if (block.timestamp >= _time) revert TooLate(_time);
+        modifier onlyBefore(uint time) {
+            if (block.timestamp >= time) revert TooLate(time);
             _;
         }
-        modifier onlyAfter(uint _time) {
-            if (block.timestamp <= _time) revert TooEarly(_time);
+        modifier onlyAfter(uint time) {
+            if (block.timestamp <= time) revert TooEarly(time);
             _;
         }
 
         constructor(
-            uint _biddingTime,
-            uint _revealTime,
-            address payable _beneficiary
+            uint biddingTime,
+            uint revealTime,
+            address payable beneficiaryAddress
         ) {
-            beneficiary = _beneficiary;
-            biddingEnd = block.timestamp + _biddingTime;
-            revealEnd = biddingEnd + _revealTime;
+            beneficiary = beneficiaryAddress;
+            biddingEnd = block.timestamp + biddingTime;
+            revealEnd = biddingEnd + revealTime;
         }
 
-        /// Place a blinded bid with `_blindedBid` =
+        /// Place a blinded bid with `blindedBid` =
         /// keccak256(abi.encodePacked(value, fake, secret)).
         /// The sent ether is only refunded if the bid is correctly
         /// revealed in the revealing phase. The bid is valid if the
@@ -259,13 +263,13 @@ invalid bids.
         /// not the exact amount are ways to hide the real bid but
         /// still make the required deposit. The same address can
         /// place multiple bids.
-        function bid(bytes32 _blindedBid)
-            public
+        function bid(bytes32 blindedBid)
+            external
             payable
             onlyBefore(biddingEnd)
         {
             bids[msg.sender].push(Bid({
-                blindedBid: _blindedBid,
+                blindedBid: blindedBid,
                 deposit: msg.value
             }));
         }
@@ -274,24 +278,24 @@ invalid bids.
         /// correctly blinded invalid bids and for all bids except for
         /// the totally highest.
         function reveal(
-            uint[] memory _values,
-            bool[] memory _fake,
-            bytes32[] memory _secret
+            uint[] calldata values,
+            bool[] calldata fakes,
+            bytes32[] calldata secrets
         )
-            public
+            external
             onlyAfter(biddingEnd)
             onlyBefore(revealEnd)
         {
             uint length = bids[msg.sender].length;
-            require(_values.length == length);
-            require(_fake.length == length);
-            require(_secret.length == length);
+            require(values.length == length);
+            require(fakes.length == length);
+            require(secrets.length == length);
 
             uint refund;
             for (uint i = 0; i < length; i++) {
                 Bid storage bidToCheck = bids[msg.sender][i];
                 (uint value, bool fake, bytes32 secret) =
-                        (_values[i], _fake[i], _secret[i]);
+                        (values[i], fakes[i], secrets[i]);
                 if (bidToCheck.blindedBid != keccak256(abi.encodePacked(value, fake, secret))) {
                     // Bid was not actually revealed.
                     // Do not refund deposit.
@@ -310,7 +314,7 @@ invalid bids.
         }
 
         /// Withdraw a bid that was overbid.
-        function withdraw() public {
+        function withdraw() external {
             uint amount = pendingReturns[msg.sender];
             if (amount > 0) {
                 // It is important to set this to zero because the recipient
@@ -326,7 +330,7 @@ invalid bids.
         /// End the auction and send the highest bid
         /// to the beneficiary.
         function auctionEnd()
-            public
+            external
             onlyAfter(revealEnd)
         {
             if (ended) revert AuctionEndAlreadyCalled();

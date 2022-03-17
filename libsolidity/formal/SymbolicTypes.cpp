@@ -96,7 +96,7 @@ SortPointer smtSort(frontend::Type const& _type)
 		auto sliceArrayType = dynamic_cast<ArraySliceType const*>(&_type);
 		ArrayType const* arrayType = sliceArrayType ? &sliceArrayType->arrayType() : dynamic_cast<ArrayType const*>(&_type);
 		if (
-			(arrayType && (arrayType->isString() || arrayType->isByteArray())) ||
+			(arrayType && arrayType->isByteArrayOrString()) ||
 			_type.category() == frontend::Type::Category::StringLiteral
 		)
 			tupleName = "bytes";
@@ -233,6 +233,10 @@ pair<bool, shared_ptr<SymbolicVariable>> newSymbolicVariable(
 	bool abstract = false;
 	shared_ptr<SymbolicVariable> var;
 	frontend::Type const* type = &_type;
+
+	if (auto userType = dynamic_cast<UserDefinedValueType const*>(type))
+		return newSymbolicVariable(userType->underlyingType(), _uniqueName, _context);
+
 	if (!isSupportedTypeDeclaration(_type))
 	{
 		abstract = true;
@@ -551,6 +555,11 @@ smtutil::Expression symbolicUnknownConstraints(smtutil::Expression _expr, fronte
 	solAssert(_type, "");
 	if (isEnum(*_type) || isInteger(*_type) || isAddress(*_type) || isFixedBytes(*_type))
 		return _expr >= minValue(_type) && _expr <= maxValue(_type);
+	else if (
+		auto arrayType = dynamic_cast<ArrayType const*>(_type);
+		arrayType && !arrayType->isDynamicallySized()
+	)
+		return smtutil::Expression::tuple_get(_expr, 1) == arrayType->length();
 	else if (isArray(*_type) || isMapping(*_type))
 		/// Length cannot be negative.
 		return smtutil::Expression::tuple_get(_expr, 1) >= 0;
@@ -571,7 +580,7 @@ optional<smtutil::Expression> symbolicTypeConversion(frontend::Type const* _from
 					return smtutil::Expression(size_t(0));
 				auto bytesVec = util::asBytes(strType->value());
 				bytesVec.resize(fixedBytesType->numBytes(), 0);
-				return smtutil::Expression(u256(toHex(bytesVec, util::HexPrefix::Add)));
+				return smtutil::Expression(u256(util::toHex(bytesVec, util::HexPrefix::Add)));
 			}
 
 	return std::nullopt;

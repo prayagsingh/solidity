@@ -403,7 +403,7 @@ void CompilerContext::appendInlineAssembly(
 	{
 		if (_insideFunction)
 			return false;
-		return contains(_localVariables, _identifier.name.str());
+		return util::contains(_localVariables, _identifier.name.str());
 	};
 	identifierAccess.generateCode = [&](
 		yul::Identifier const& _identifier,
@@ -411,6 +411,7 @@ void CompilerContext::appendInlineAssembly(
 		yul::AbstractAssembly& _assembly
 	)
 	{
+		solAssert(_context == yul::IdentifierContext::RValue || _context == yul::IdentifierContext::LValue, "");
 		auto it = std::find(_localVariables.begin(), _localVariables.end(), _identifier.name.str());
 		solAssert(it != _localVariables.end(), "");
 		auto stackDepth = static_cast<size_t>(distance(it, _localVariables.end()));
@@ -420,7 +421,7 @@ void CompilerContext::appendInlineAssembly(
 		if (stackDiff < 1 || stackDiff > 16)
 			BOOST_THROW_EXCEPTION(
 				StackTooDeepError() <<
-				errinfo_sourceLocation(_identifier.debugData->location) <<
+				errinfo_sourceLocation(nativeLocationOf(_identifier)) <<
 				util::errinfo_comment("Stack too deep (" + to_string(stackDiff) + "), try removing local variables.")
 			);
 		if (_context == yul::IdentifierContext::RValue)
@@ -434,14 +435,14 @@ void CompilerContext::appendInlineAssembly(
 
 	ErrorList errors;
 	ErrorReporter errorReporter(errors);
-	auto scanner = make_shared<langutil::Scanner>(langutil::CharStream(_assembly, _sourceName));
+	langutil::CharStream charStream(_assembly, _sourceName);
 	yul::EVMDialect const& dialect = yul::EVMDialect::strictAssemblyForEVM(m_evmVersion);
 	optional<langutil::SourceLocation> locationOverride;
 	if (!_system)
 		locationOverride = m_asm->currentSourceLocation();
 	shared_ptr<yul::Block> parserResult =
 		yul::Parser(errorReporter, dialect, std::move(locationOverride))
-		.parse(scanner, false);
+		.parse(charStream);
 #ifdef SOL_OUTPUT_ASM
 	cout << yul::AsmPrinter(&dialect)(*parserResult) << endl;
 #endif
@@ -455,7 +456,9 @@ void CompilerContext::appendInlineAssembly(
 			_assembly + "\n"
 			"------------------ Errors: ----------------\n";
 		for (auto const& error: errorReporter.errors())
-			message += SourceReferenceFormatter::formatErrorInformation(*error);
+			// TODO if we have "locationOverride", it will be the wrong char stream,
+			// but we do not have access to the solidity scanner.
+			message += SourceReferenceFormatter::formatErrorInformation(*error, charStream);
 		message += "-------------------------------------------\n";
 
 		solAssert(false, message);
@@ -489,8 +492,8 @@ void CompilerContext::appendInlineAssembly(
 			solAssert(m_generatedYulUtilityCode.empty(), "");
 			m_generatedYulUtilityCode = yul::AsmPrinter(dialect)(*obj.code);
 			string code = yul::AsmPrinter{dialect}(*obj.code);
-			scanner = make_shared<langutil::Scanner>(langutil::CharStream(m_generatedYulUtilityCode, _sourceName));
-			obj.code = yul::Parser(errorReporter, dialect).parse(scanner, false);
+			langutil::CharStream charStream(m_generatedYulUtilityCode, _sourceName);
+			obj.code = yul::Parser(errorReporter, dialect).parse(charStream);
 			*obj.analysisInfo = yul::AsmAnalyzer::analyzeStrictAssertCorrect(dialect, obj);
 		}
 
@@ -518,7 +521,7 @@ void CompilerContext::appendInlineAssembly(
 		analysisInfo,
 		*m_asm,
 		m_evmVersion,
-		identifierAccess,
+		identifierAccess.generateCode,
 		_system,
 		_optimiserSettings.optimizeStackAllocation
 	);
@@ -569,8 +572,7 @@ void CompilerContext::updateSourceLocation()
 evmasm::Assembly::OptimiserSettings CompilerContext::translateOptimiserSettings(OptimiserSettings const& _settings)
 {
 	// Constructing it this way so that we notice changes in the fields.
-	evmasm::Assembly::OptimiserSettings asmSettings{false, false,  false, false, false, false, false, m_evmVersion, 0};
-	asmSettings.isCreation = true;
+	evmasm::Assembly::OptimiserSettings asmSettings{false,  false, false, false, false, false, m_evmVersion, 0};
 	asmSettings.runInliner = _settings.runInliner;
 	asmSettings.runJumpdestRemover = _settings.runJumpdestRemover;
 	asmSettings.runPeephole = _settings.runPeephole;

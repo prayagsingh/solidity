@@ -149,8 +149,8 @@ public:
 		strings const& _parameterTypes,
 		strings const& _returnParameterTypes,
 		FunctionType::Kind _kind = FunctionType::Kind::Internal,
-		bool _arbitraryParameters = false,
-		StateMutability _stateMutability = StateMutability::NonPayable
+		StateMutability _stateMutability = StateMutability::NonPayable,
+		FunctionType::Options _options = {}
 	);
 
 	/// @returns a highly customized FunctionType, use with care.
@@ -160,13 +160,9 @@ public:
 		strings _parameterNames = strings{},
 		strings _returnParameterNames = strings{},
 		FunctionType::Kind _kind = FunctionType::Kind::Internal,
-		bool _arbitraryParameters = false,
 		StateMutability _stateMutability = StateMutability::NonPayable,
 		Declaration const* _declaration = nullptr,
-		bool _gasSet = false,
-		bool _valueSet = false,
-		bool _bound = false,
-		bool _saltSet = false
+		FunctionType::Options _options = {}
 	);
 
 	/// Auto-detect the proper type for a literal. @returns an empty pointer if the literal does
@@ -200,6 +196,8 @@ public:
 	static MagicType const* meta(Type const* _type);
 
 	static MappingType const* mapping(Type const* _keyType, Type const* _valueType);
+
+	static UserDefinedValueType const* userDefinedValueType(UserDefinedValueTypeDefinition const& _definition);
 
 private:
 	/// Global TypeProvider instance.

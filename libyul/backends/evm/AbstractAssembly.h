@@ -27,6 +27,7 @@
 
 #include <libsolutil/Common.h>
 #include <libsolutil/CommonData.h>
+#include <libsolutil/Numeric.h>
 
 #include <functional>
 #include <memory>
@@ -97,7 +98,7 @@ public:
 	/// Append the assembled size as a constant.
 	virtual void appendAssemblySize() = 0;
 	/// Creates a new sub-assembly, which can be referenced using dataSize and dataOffset.
-	virtual std::pair<std::shared_ptr<AbstractAssembly>, SubID> createSubAssembly(std::string _name = "") = 0;
+	virtual std::pair<std::shared_ptr<AbstractAssembly>, SubID> createSubAssembly(bool _creation, std::string _name = "") = 0;
 	/// Appends the offset of the given sub-assembly or data.
 	virtual void appendDataOffset(std::vector<SubID> const& _subPath) = 0;
 	/// Appends the size of the given sub-assembly or data.
@@ -110,11 +111,14 @@ public:
 	/// Appends an assignment to an immutable variable.
 	virtual void appendImmutableAssignment(std::string const& _identifier) = 0;
 
+	/// Appends data to the very end of the bytecode. Repeated calls concatenate.
+	virtual void appendToAuxiliaryData(bytes const& _data) = 0;
+
 	/// Mark this assembly as invalid. Any attempt to request bytecode from it should throw.
 	virtual void markAsInvalid() = 0;
 };
 
-enum class IdentifierContext { LValue, RValue, VariableDeclaration };
+enum class IdentifierContext { LValue, RValue, VariableDeclaration, NonExternal };
 
 /// Object that is used to resolve references and generate code for access to identifiers external
 /// to inline assembly (not used in standalone assembly mode).

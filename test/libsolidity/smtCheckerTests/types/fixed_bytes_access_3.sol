@@ -30,5 +30,7 @@ contract C {
 }
 // ====
 // SMTEngine: all
+// SMTIgnoreOS: macos
 // ----
 // Warning 6368: (456-462): CHC: Out of bounds access happens here.
+// Info 1180: Contract invariant(s) for :C:\n!(a.length <= 4)\n!(a[2].length <= 2)\n

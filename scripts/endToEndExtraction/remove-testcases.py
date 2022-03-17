@@ -33,13 +33,13 @@ def parse_call(call):
     return function.strip(), arguments.strip(), results.strip()
 
 
-def colorize(left, right, id):
+def colorize(left, right, index):
     red = "\x1b[31m"
     yellow = "\x1b[33m"
     reset = "\x1b[0m"
     colors = [red, yellow]
-    color = colors[id % len(colors)]
-    function, arguments, results = parse_call(right)
+    color = colors[index % len(colors)]
+    function, _arguments, _results = parse_call(right)
     left = left.replace("compileAndRun", color + "compileAndRun" + reset)
     right = right.replace("constructor", color + "constructor" + reset)
     if function:
@@ -61,7 +61,7 @@ def get_checks(content, sol_file_path):
             constructors.append(line)
         if line.startswith("ABI_CHECK") or line.startswith("BOOST_REQUIRE"):
             checks.append(line)
-    with open(sol_file_path, "r") as sol_file:
+    with open(sol_file_path, "r", encoding='utf8') as sol_file:
         sol_constructors = []
         sol_checks = []
         inside_expectations = False
@@ -118,7 +118,7 @@ def get_tests(e2e_path):
 
 def process_input_file(e2e_path, input_file, interactive):
     tests = get_tests(e2e_path)
-    with open(input_file, "r") as cpp_file:
+    with open(input_file, "r", encoding='utf8') as cpp_file:
         inside_test = False
         test_name = ""
         inside_extracted_test = False
@@ -158,7 +158,7 @@ def main(argv):
     interactive = False
     input_file = None
     try:
-        opts, args = getopt.getopt(argv, "if:")
+        opts, _args = getopt.getopt(argv, "if:")
     except getopt.GetoptError:
         print("./remove-testcases.py [-i] [-f <full path to SolidityEndToEndTest.cpp>]")
         sys.exit(1)

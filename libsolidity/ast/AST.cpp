@@ -192,7 +192,7 @@ FunctionDefinition const* ContractDefinition::receiveFunction() const
 	return nullptr;
 }
 
-vector<EventDefinition const*> const& ContractDefinition::interfaceEvents() const
+vector<EventDefinition const*> const& ContractDefinition::definedInterfaceEvents() const
 {
 	return m_interfaceEvents.init([&]{
 		set<string> eventsSeen;
@@ -213,9 +213,18 @@ vector<EventDefinition const*> const& ContractDefinition::interfaceEvents() cons
 					interfaceEvents.push_back(e);
 				}
 			}
-
 		return interfaceEvents;
 	});
+}
+
+vector<EventDefinition const*> const ContractDefinition::usedInterfaceEvents() const
+{
+	solAssert(annotation().creationCallGraph.set(), "");
+
+	return util::convertContainer<std::vector<EventDefinition const*>>(
+		(*annotation().creationCallGraph)->emittedEvents +
+		(*annotation().deployedCallGraph)->emittedEvents
+	);
 }
 
 vector<ErrorDefinition const*> ContractDefinition::interfaceErrors(bool _requireCallGraph) const
@@ -227,11 +236,10 @@ vector<ErrorDefinition const*> ContractDefinition::interfaceErrors(bool _require
 	if (_requireCallGraph)
 		solAssert(annotation().creationCallGraph.set(), "");
 	if (annotation().creationCallGraph.set())
-	{
-		result += (*annotation().creationCallGraph)->usedErrors;
-		result += (*annotation().deployedCallGraph)->usedErrors;
-	}
-	return convertContainer<vector<ErrorDefinition const*>>(move(result));
+		result +=
+			(*annotation().creationCallGraph)->usedErrors +
+			(*annotation().deployedCallGraph)->usedErrors;
+	return util::convertContainer<vector<ErrorDefinition const*>>(move(result));
 }
 
 vector<pair<util::FixedHash<4>, FunctionTypePointer>> const& ContractDefinition::interfaceFunctionList(bool _includeInheritedFunctions) const
@@ -274,7 +282,7 @@ uint32_t ContractDefinition::interfaceId() const
 {
 	uint32_t result{0};
 	for (auto const& function: interfaceFunctionList(false))
-		result ^= util::fromBigEndian<uint32_t>(function.first.ref());
+		result ^= fromBigEndian<uint32_t>(function.first.ref());
 	return result;
 }
 
@@ -333,6 +341,17 @@ multimap<std::string, FunctionDefinition const*> const& ContractDefinition::defi
 TypeNameAnnotation& TypeName::annotation() const
 {
 	return initAnnotation<TypeNameAnnotation>();
+}
+
+Type const* UserDefinedValueTypeDefinition::type() const
+{
+	solAssert(m_underlyingType->annotation().type, "");
+	return TypeProvider::typeType(TypeProvider::userDefinedValueType(*this));
+}
+
+TypeDeclarationAnnotation& UserDefinedValueTypeDefinition::annotation() const
+{
+	return initAnnotation<TypeDeclarationAnnotation>();
 }
 
 Type const* StructDefinition::type() const
@@ -500,23 +519,20 @@ ModifierDefinition const& ModifierDefinition::resolveVirtual(
 	ContractDefinition const* _searchStart
 ) const
 {
+	// Super is not possible with modifiers
 	solAssert(_searchStart == nullptr, "Used super in connection with modifiers.");
 
-	// If we are not doing super-lookup and the modifier is not virtual, we can stop here.
-	if (_searchStart == nullptr && !virtualSemantics())
+	// The modifier is not virtual, we can stop here.
+	if (!virtualSemantics())
 		return *this;
 
 	solAssert(!dynamic_cast<ContractDefinition const&>(*scope()).isLibrary(), "");
 
 	for (ContractDefinition const* c: _mostDerivedContract.annotation().linearizedBaseContracts)
-	{
-		if (_searchStart != nullptr && c != _searchStart)
-			continue;
-		_searchStart = nullptr;
 		for (ModifierDefinition const* modifier: c->functionModifiers())
 			if (modifier->name() == name())
 				return *modifier;
-	}
+
 	solAssert(false, "Virtual modifier " + name() + " not found.");
 	return *this; // not reached
 }

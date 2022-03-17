@@ -17,6 +17,7 @@
 // SPDX-License-Identifier: GPL-3.0
 
 #include <test/libsolidity/SyntaxTest.h>
+
 #include <test/Common.h>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
@@ -76,6 +77,8 @@ void SyntaxTest::setupCompiler()
 		OptimiserSettings::full() :
 		OptimiserSettings::minimal()
 	);
+	compiler().setMetadataFormat(CompilerStack::MetadataFormat::NoMetadata);
+	compiler().setMetadataHash(CompilerStack::MetadataHash::None);
 }
 
 void SyntaxTest::parseAndAnalyze()
@@ -90,7 +93,7 @@ void SyntaxTest::parseAndAnalyze()
 					return error->type() == Error::Type::CodeGenerationError;
 				});
 				auto errorCount = count_if(errors.cbegin(), errors.cend(), [](auto const& error) {
-					return error->type() != Error::Type::Warning;
+					return Error::isError(error->type());
 				});
 				// failing compilation after successful analysis is a rare case,
 				// it assumes that errors contain exactly one error, and the error is of type Error::Type::CodeGenerationError
@@ -115,15 +118,18 @@ void SyntaxTest::filterObtainedErrors()
 {
 	for (auto const& currentError: filterErrors(compiler().errors(), true))
 	{
-		int locationStart = -1, locationEnd = -1;
+		int locationStart = -1;
+		int locationEnd = -1;
 		string sourceName;
-		if (auto location = boost::get_error_info<errinfo_sourceLocation>(*currentError))
+		if (SourceLocation const* location = currentError->sourceLocation())
 		{
-			solAssert(location->source, "");
-			sourceName = location->source->name();
-
+			solAssert(location->sourceName, "");
+			sourceName = *location->sourceName;
 			solAssert(m_sources.sources.count(sourceName) == 1, "");
-			int preambleSize = static_cast<int>(location->source->source().size()) - static_cast<int>(m_sources.sources[sourceName].size());
+
+			int preambleSize =
+				static_cast<int>(compiler().charStream(sourceName).size()) -
+				static_cast<int>(m_sources.sources[sourceName].size());
 			solAssert(preambleSize >= 0, "");
 
 			// ignore the version & license pragma inserted by the testing tool when calculating locations.

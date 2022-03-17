@@ -56,9 +56,10 @@ public:
 	std::shared_ptr<Object> parse(std::shared_ptr<langutil::Scanner> const& _scanner, bool _reuseScanner);
 
 private:
+	std::optional<SourceNameMap> tryParseSourceNameMapping() const;
 	std::shared_ptr<Object> parseObject(Object* _containingObject = nullptr);
-	std::shared_ptr<Block> parseCode();
-	std::shared_ptr<Block> parseBlock();
+	std::shared_ptr<Block> parseCode(std::optional<SourceNameMap> _sourceNames);
+	std::shared_ptr<Block> parseBlock(std::optional<SourceNameMap> _sourceNames);
 	void parseData(Object& _containingObject);
 
 	/// Tries to parse a name that is non-empty and unique inside the containing object.

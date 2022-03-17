@@ -40,6 +40,7 @@
 #include <range/v3/view/transform.hpp>
 
 #include <cstdlib>
+#include <limits>
 
 using namespace std;
 using namespace solidity;
@@ -102,8 +103,8 @@ std::pair<bool, string> ExecutionFramework::compareAndCreateMessage(
 	std::string message =
 			"Invalid encoded data\n"
 			"   Result                                                           Expectation\n";
-	auto resultHex = boost::replace_all_copy(toHex(_result), "0", ".");
-	auto expectedHex = boost::replace_all_copy(toHex(_expectation), "0", ".");
+	auto resultHex = boost::replace_all_copy(util::toHex(_result), "0", ".");
+	auto expectedHex = boost::replace_all_copy(util::toHex(_expectation), "0", ".");
 	for (size_t i = 0; i < std::max(resultHex.size(), expectedHex.size()); i += 0x40)
 	{
 		std::string result{i >= resultHex.size() ? string{} : resultHex.substr(i, 0x40)};
@@ -163,7 +164,7 @@ void ExecutionFramework::sendMessage(bytes const& _data, bool _isCreation, u256 
 			cout << "CALL   " << m_sender.hex() << " -> " << m_contractAddress.hex() << ":" << endl;
 		if (_value > 0)
 			cout << " value: " << _value << endl;
-		cout << " in:      " << toHex(_data) << endl;
+		cout << " in:      " << util::toHex(_data) << endl;
 	}
 	evmc_message message = {};
 	message.input_data = _data.data();
@@ -181,7 +182,7 @@ void ExecutionFramework::sendMessage(bytes const& _data, bool _isCreation, u256 
 		message.kind = EVMC_CALL;
 		message.destination = EVMHost::convertToEVMC(m_contractAddress);
 	}
-	message.gas = m_gas.convert_to<int64_t>();
+	message.gas = InitialGas.convert_to<int64_t>();
 
 	evmc::result result = m_evmcHost->call(message);
 
@@ -189,12 +190,12 @@ void ExecutionFramework::sendMessage(bytes const& _data, bool _isCreation, u256 
 	if (_isCreation)
 		m_contractAddress = EVMHost::convertFromEVMC(result.create_address);
 
-	m_gasUsed = m_gas - result.gas_left;
+	m_gasUsed = InitialGas - result.gas_left;
 	m_transactionSuccessful = (result.status_code == EVMC_SUCCESS);
 
 	if (m_showMessages)
 	{
-		cout << " out:     " << toHex(m_output) << endl;
+		cout << " out:     " << util::toHex(m_output) << endl;
 		cout << " result: " << static_cast<size_t>(result.status_code) << endl;
 		cout << " gas used: " << m_gasUsed.str() << endl;
 	}
@@ -215,7 +216,7 @@ void ExecutionFramework::sendEther(h160 const& _addr, u256 const& _amount)
 	message.value = EVMHost::convertToEVMC(_amount);
 	message.kind = EVMC_CALL;
 	message.destination = EVMHost::convertToEVMC(_addr);
-	message.gas = m_gas.convert_to<int64_t>();
+	message.gas = InitialGas.convert_to<int64_t>();
 
 	m_evmcHost->call(message);
 }
@@ -265,7 +266,7 @@ h160 ExecutionFramework::logAddress(size_t _logIdx) const
 
 bytes ExecutionFramework::logData(size_t _logIdx) const
 {
-	const auto& data = m_evmcHost->recorded_logs.at(_logIdx).data;
+	auto const& data = m_evmcHost->recorded_logs.at(_logIdx).data;
 	// TODO: Return a copy of log data, because this is expected from REQUIRE_LOG_DATA(),
 	//       but reference type like string_view would be preferable.
 	return {data.begin(), data.end()};

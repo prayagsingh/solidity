@@ -31,6 +31,7 @@
 #include <memory>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 using namespace std;
@@ -69,10 +70,10 @@ SemanticTest::SemanticTest(
 	static set<string> const legacyRunTriggers{"also", "false", "default"};
 
 	string compileViaYul = m_reader.stringSetting("compileViaYul", "default");
-	if (!contains(compileViaYulAllowedValues, compileViaYul))
+	if (!util::contains(compileViaYulAllowedValues, compileViaYul))
 		BOOST_THROW_EXCEPTION(runtime_error("Invalid compileViaYul value: " + compileViaYul + "."));
-	m_testCaseWantsYulRun = contains(yulRunTriggers, compileViaYul);
-	m_testCaseWantsLegacyRun = contains(legacyRunTriggers, compileViaYul);
+	m_testCaseWantsYulRun = util::contains(yulRunTriggers, compileViaYul);
+	m_testCaseWantsLegacyRun = util::contains(legacyRunTriggers, compileViaYul);
 
 	// Do not enforce via yul and ewasm, if via yul was explicitly denied.
 	if (compileViaYul == "false")
@@ -131,7 +132,7 @@ map<string, Builtin> SemanticTest::makeBuiltins()
 			"isoltest_builtin_test",
 			[](FunctionCall const&) -> optional<bytes>
 			{
-				return util::toBigEndian(u256(0x1234));
+				return toBigEndian(u256(0x1234));
 			}
 		},
 		{
@@ -139,7 +140,7 @@ map<string, Builtin> SemanticTest::makeBuiltins()
 			[](FunctionCall const& _call) -> optional<bytes>
 			{
 				if (_call.arguments.parameters.empty())
-					return util::toBigEndian(0);
+					return toBigEndian(0);
 				else
 					return _call.arguments.rawBytes();
 			}
@@ -154,7 +155,7 @@ map<string, Builtin> SemanticTest::makeBuiltins()
 					address = h160(_call.arguments.parameters.at(0).rawString);
 				else
 					address = m_contractAddress;
-				return util::toBigEndian(balanceAt(address));
+				return toBigEndian(balanceAt(address));
 			}
 		},
 		{
@@ -188,7 +189,7 @@ vector<SideEffectHook> SemanticTest::makeSideEffectHooks() const
 			{
 				vector<string> result;
 				for (auto const& argument: _call.arguments.parameters)
-					result.emplace_back(toHex(argument.rawBytes));
+					result.emplace_back(util::toHex(argument.rawBytes));
 				return result;
 			}
 			return {};
@@ -383,7 +384,13 @@ TestCase::TestResult SemanticTest::runTest(
 			soltestAssert(
 				deploy(test.call().signature, 0, {}, libraries) && m_transactionSuccessful,
 				"Failed to deploy library " + test.call().signature);
-			libraries[test.call().signature] = m_contractAddress;
+			// For convenience, in semantic tests we assume that an unqualified name like `L` is equivalent to one
+			// with an empty source unit name (`:L`). This is fine because the compiler never uses unqualified
+			// names in the Yul code it produces and does not allow `linkersymbol()` at all in inline assembly.
+			if (test.call().signature.find(':') == string::npos)
+				libraries[":" + test.call().signature] = m_contractAddress;
+			else
+				libraries[test.call().signature] = m_contractAddress;
 			continue;
 		}
 		else
@@ -400,7 +407,10 @@ TestCase::TestResult SemanticTest::runTest(
 			if (m_transactionSuccessful == test.call().expectations.failure)
 				success = false;
 			if (success && !checkGasCostExpectation(test, _isYulRun))
+			{
+				success = false;
 				m_gasCostFailure = true;
+			}
 
 			test.setFailure(!m_transactionSuccessful);
 			test.setRawBytes(bytes());
@@ -425,7 +435,7 @@ TestCase::TestResult SemanticTest::runTest(
 			{
 				soltestAssert(
 					m_allowNonExistingFunctions ||
-					m_compiler.methodIdentifiers(m_compiler.lastContractName(m_sources.mainSourceFile)).isMember(test.call().signature),
+					m_compiler.interfaceSymbols(m_compiler.lastContractName(m_sources.mainSourceFile))["methods"].isMember(test.call().signature),
 					"The function " + test.call().signature + " is not known to the compiler"
 				);
 
@@ -555,14 +565,14 @@ bool SemanticTest::checkGasCostExpectation(TestFunctionCall& io_test, bool _comp
 	// We don't check gas if enforce gas cost is not active
 	// or test is run with abi encoder v1 only
 	// or gas used less than threshold for enforcing feature
+	// or the test has used up all available gas (test will fail anyway)
 	// or setting is "ir" and it's not included in expectations
 	// or if the called function is an isoltest builtin e.g. `smokeTest` or `storageEmpty`
 	if (
 		!m_enforceGasCost ||
-		(
-			(setting == "ir" || m_gasUsed < m_enforceGasCostMinValue || m_gasUsed >= m_gas) &&
-			io_test.call().expectations.gasUsed.count(setting) == 0
-		) ||
+		m_gasUsed < m_enforceGasCostMinValue ||
+		m_gasUsed >= InitialGas ||
+		(setting == "ir" && io_test.call().expectations.gasUsed.count(setting) == 0) ||
 		io_test.call().kind == FunctionCall::Kind::Builtin
 	)
 		return true;

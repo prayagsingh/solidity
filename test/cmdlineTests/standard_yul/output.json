@@ -5,7 +5,7 @@
     /* \"A\":38:39   */
   0x00
     /* \"A\":34:35   */
-  0x00
+  dup1
     /* \"A\":31:32   */
   dup3
     /* \"A\":27:36   */
@@ -26,4 +26,4 @@
         sstore(add(x, 0), 0)
     }
 }
-"}}},"errors":[{"component":"general","formattedMessage":"Yul is still experimental. Please use the output with care.","message":"Yul is still experimental. Please use the output with care.","severity":"warning","type":"Warning"}]}
+"}}},}

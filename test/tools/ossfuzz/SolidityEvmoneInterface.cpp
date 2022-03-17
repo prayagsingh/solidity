@@ -41,13 +41,11 @@ optional<CompilerOutput> SolidityCompilationFramework::compileContract()
 	{
 		if (m_compilerInput.debugFailure)
 		{
-			SourceReferenceFormatter formatter(cerr, false, false);
-
 			cerr << "Compiling contract failed" << endl;
 			for (auto const& error: m_compiler.errors())
-				formatter.printExceptionInformation(
+				cerr << SourceReferenceFormatter::formatErrorInformation(
 					*error,
-					formatter.formatErrorInformation(*error)
+					m_compiler
 				);
 		}
 		return {};
@@ -60,7 +58,7 @@ optional<CompilerOutput> SolidityCompilationFramework::compileContract()
 		else
 			contractName = m_compilerInput.contractName;
 		evmasm::LinkerObject obj = m_compiler.object(contractName);
-		Json::Value methodIdentifiers = m_compiler.methodIdentifiers(contractName);
+		Json::Value methodIdentifiers = m_compiler.interfaceSymbols(contractName)["methods"];
 		return CompilerOutput{obj.bytecode, methodIdentifiers};
 	}
 }

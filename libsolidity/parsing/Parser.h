@@ -29,7 +29,7 @@
 
 namespace solidity::langutil
 {
-class Scanner;
+class CharStream;
 }
 
 namespace solidity::frontend
@@ -47,7 +47,7 @@ public:
 		m_evmVersion(_evmVersion)
 	{}
 
-	ASTPointer<SourceUnit> parse(std::shared_ptr<langutil::Scanner> const& _scanner);
+	ASTPointer<SourceUnit> parse(langutil::CharStream& _charStream);
 
 private:
 	class ASTNodeFactory;
@@ -95,6 +95,7 @@ private:
 	ASTPointer<ASTNode> parseFunctionDefinition(bool _freeFunction = false);
 	ASTPointer<StructDefinition> parseStructDefinition();
 	ASTPointer<EnumDefinition> parseEnumDefinition();
+	ASTPointer<UserDefinedValueTypeDefinition> parseUserDefinedValueTypeDefinition();
 	ASTPointer<EnumValue> parseEnumValue();
 	ASTPointer<VariableDeclaration> parseVariableDeclaration(
 		VarDeclParserOptions const& _options = {},

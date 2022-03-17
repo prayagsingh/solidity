@@ -56,7 +56,7 @@ to call back into A before this interaction is completed. To give an example,
 the following code contains a bug (it is just a snippet and not a
 complete contract):
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
     pragma solidity >=0.6.0 <0.9.0;
@@ -80,7 +80,7 @@ basically retrieve all the Ether in the contract. In particular, the
 following contract will allow an attacker to refund multiple times
 as it uses ``call`` which forwards all remaining gas by default:
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
     pragma solidity >=0.6.2 <0.9.0;
@@ -100,7 +100,7 @@ as it uses ``call`` which forwards all remaining gas by default:
 To avoid re-entrancy, you can use the Checks-Effects-Interactions pattern as
 outlined further below:
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
     pragma solidity >=0.6.0 <0.9.0;
@@ -193,12 +193,45 @@ Note that ``.send()`` does **not** throw an exception if the call stack is
 depleted but rather returns ``false`` in that case. The low-level functions
 ``.call()``, ``.delegatecall()`` and ``.staticcall()`` behave in the same way.
 
+Authorized Proxies
+==================
+
+If your contract can act as a proxy, i.e. if it can call arbitrary contracts
+with user-supplied data, then the user can essentially assume the identity
+of the proxy contract. Even if you have other protective measures in place,
+it is best to build your contract system such that the proxy does not have
+any permissions (not even for itself). If needed, you can accomplish that
+using a second proxy:
+
+.. code-block:: solidity
+
+    // SPDX-License-Identifier: GPL-3.0
+    pragma solidity ^0.8.0;
+    contract ProxyWithMoreFunctionality {
+        PermissionlessProxy proxy;
+
+        function callOther(address addr, bytes memory payload) public
+                returns (bool, bytes memory) {
+            return proxy.callOther(addr, payload);
+        }
+        // Other functions and other functionality
+    }
+
+    // This is the full contract, it has no other functionality and
+    // requires no privileges to work.
+    contract PermissionlessProxy {
+        function callOther(address addr, bytes memory payload) public
+                returns (bool, bytes memory) {
+            return addr.call(payload);
+        }
+    }
+
 tx.origin
 =========
 
 Never use tx.origin for authorization. Let's say you have a wallet contract like this:
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
     pragma solidity >=0.7.0 <0.9.0;
@@ -211,6 +244,7 @@ Never use tx.origin for authorization. Let's say you have a wallet contract like
         }
 
         function transferTo(address payable dest, uint amount) public {
+            // THE BUG IS RIGHT HERE, you must use msg.sender instead of tx.origin
             require(tx.origin == owner);
             dest.transfer(amount);
         }
@@ -218,7 +252,7 @@ Never use tx.origin for authorization. Let's say you have a wallet contract like
 
 Now someone tricks you into sending Ether to the address of this attack wallet:
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
     pragma solidity >=0.7.0 <0.9.0;
@@ -251,7 +285,7 @@ They resemble integers when the values are small, but cannot represent arbitrari
 The following code causes an overflow because the result of the addition is too large
 to be stored in the type ``uint8``:
 
-::
+.. code-block:: solidity
 
   uint8 x = 255;
   uint8 y = 1;
@@ -289,7 +323,7 @@ field of a ``struct`` that is the base type of a dynamic storage array.  The
 ``mapping`` is also ignored in assignments of structs or arrays containing a
 ``mapping``.
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
     pragma solidity >=0.6.0 <0.9.0;
@@ -297,17 +331,17 @@ field of a ``struct`` that is the base type of a dynamic storage array.  The
     contract Map {
         mapping (uint => uint)[] array;
 
-        function allocate(uint _newMaps) public {
-            for (uint i = 0; i < _newMaps; i++)
+        function allocate(uint newMaps) public {
+            for (uint i = 0; i < newMaps; i++)
                 array.push();
         }
 
-        function writeMap(uint _map, uint _key, uint _value) public {
-            array[_map][_key] = _value;
+        function writeMap(uint map, uint key, uint value) public {
+            array[map][key] = value;
         }
 
-        function readMap(uint _map, uint _key) public view returns (uint) {
-            return array[_map][_key];
+        function readMap(uint map, uint key) public view returns (uint) {
+            return array[map][key];
         }
 
         function eraseMaps() public {
@@ -354,6 +388,10 @@ code.
 
 Always use the latest version of the compiler to be notified about all recently
 introduced warnings.
+
+Messages of type ``info`` issued by the compiler are not dangerous, and simply
+represent extra suggestions and optional information that the compiler thinks
+might be useful to the user.
 
 Restrict the Amount of Ether
 ============================

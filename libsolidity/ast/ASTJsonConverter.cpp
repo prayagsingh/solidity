@@ -26,15 +26,18 @@
 #include <libsolidity/ast/TypeProvider.h>
 
 #include <libyul/AsmJsonConverter.h>
-#include <libyul/AsmPrinter.h>
 #include <libyul/AST.h>
 #include <libyul/backends/evm/EVMDialect.h>
 
 #include <libsolutil/JSON.h>
 #include <libsolutil/UTF8.h>
+#include <libsolutil/CommonData.h>
+#include <libsolutil/Visitor.h>
+#include <libsolutil/Keccak256.h>
 
 #include <boost/algorithm/string/join.hpp>
-#include <boost/range/algorithm/sort.hpp>
+
+#include <range/v3/algorithm/sort.hpp>
 
 #include <utility>
 #include <vector>
@@ -110,8 +113,8 @@ void ASTJsonConverter::setJsonNode(
 
 optional<size_t> ASTJsonConverter::sourceIndexFromLocation(SourceLocation const& _location) const
 {
-	if (_location.source && m_sourceIndices.count(_location.source->name()))
-		return m_sourceIndices.at(_location.source->name());
+	if (_location.sourceName && m_sourceIndices.count(*_location.sourceName))
+		return m_sourceIndices.at(*_location.sourceName);
 	else
 		return nullopt;
 }
@@ -171,16 +174,19 @@ void ASTJsonConverter::appendExpressionAttributes(
 	_attributes += exprAttributes;
 }
 
-Json::Value ASTJsonConverter::inlineAssemblyIdentifierToJson(pair<yul::Identifier const* ,InlineAssemblyAnnotation::ExternalIdentifierInfo> _info) const
+Json::Value ASTJsonConverter::inlineAssemblyIdentifierToJson(pair<yul::Identifier const*, InlineAssemblyAnnotation::ExternalIdentifierInfo> _info) const
 {
 	Json::Value tuple(Json::objectValue);
-	tuple["src"] = sourceLocationToString(_info.first->debugData->location);
+	tuple["src"] = sourceLocationToString(nativeLocationOf(*_info.first));
 	tuple["declaration"] = idOrNull(_info.second.declaration);
 	tuple["isSlot"] = Json::Value(_info.second.suffix == "slot");
 	tuple["isOffset"] = Json::Value(_info.second.suffix == "offset");
+
 	if (!_info.second.suffix.empty())
 		tuple["suffix"] = Json::Value(_info.second.suffix);
+
 	tuple["valueSize"] = Json::Value(Json::LargestUInt(_info.second.valueSize));
+
 	return tuple;
 }
 
@@ -275,6 +281,7 @@ bool ASTJsonConverter::visit(ContractDefinition const& _node)
 		make_pair("nodes", toJson(_node.subNodes())),
 		make_pair("scope", idOrNull(_node.scope()))
 	};
+	addIfSet(attributes, "canonicalName", _node.annotation().canonicalName);
 
 	if (_node.annotation().unimplementedDeclarations.has_value())
 		attributes.emplace_back("fullyImplemented", _node.annotation().unimplementedDeclarations->empty());
@@ -305,10 +312,26 @@ bool ASTJsonConverter::visit(InheritanceSpecifier const& _node)
 
 bool ASTJsonConverter::visit(UsingForDirective const& _node)
 {
-	setJsonNode(_node, "UsingForDirective", {
-		make_pair("libraryName", toJson(_node.libraryName())),
+	vector<pair<string, Json::Value>> attributes = {
 		make_pair("typeName", _node.typeName() ? toJson(*_node.typeName()) : Json::nullValue)
-	});
+	};
+	if (_node.usesBraces())
+	{
+		Json::Value functionList;
+		for (auto const& function: _node.functionsOrLibrary())
+		{
+			Json::Value functionNode;
+			functionNode["function"] = toJson(*function);
+			functionList.append(move(functionNode));
+		}
+		attributes.emplace_back("functionList", move(functionList));
+	}
+	else
+		attributes.emplace_back("libraryName", toJson(*_node.functionsOrLibrary().front()));
+	attributes.emplace_back("global", _node.global());
+
+	setJsonNode(_node, "UsingForDirective", move(attributes));
+
 	return false;
 }
 
@@ -350,6 +373,21 @@ bool ASTJsonConverter::visit(EnumValue const& _node)
 		make_pair("name", _node.name()),
 		make_pair("nameLocation", sourceLocationToString(_node.nameLocation())),
 	});
+	return false;
+}
+
+bool ASTJsonConverter::visit(UserDefinedValueTypeDefinition const& _node)
+{
+	solAssert(_node.underlyingType(), "");
+	std::vector<pair<string, Json::Value>> attributes = {
+		make_pair("name", _node.name()),
+		make_pair("nameLocation", sourceLocationToString(_node.nameLocation())),
+		make_pair("underlyingType", toJson(*_node.underlyingType()))
+	};
+	addIfSet(attributes, "canonicalName", _node.annotation().canonicalName);
+
+	setJsonNode(_node, "UserDefinedValueTypeDefinition", std::move(attributes));
+
 	return false;
 }
 
@@ -473,24 +511,36 @@ bool ASTJsonConverter::visit(ModifierInvocation const& _node)
 bool ASTJsonConverter::visit(EventDefinition const& _node)
 {
 	m_inEvent = true;
-	setJsonNode(_node, "EventDefinition", {
+	std::vector<pair<string, Json::Value>> _attributes = {
 		make_pair("name", _node.name()),
 		make_pair("nameLocation", sourceLocationToString(_node.nameLocation())),
 		make_pair("documentation", _node.documentation() ? toJson(*_node.documentation()) : Json::nullValue),
 		make_pair("parameters", toJson(_node.parameterList())),
 		make_pair("anonymous", _node.isAnonymous())
-	});
+	};
+	if (m_stackState >= CompilerStack::State::AnalysisPerformed)
+			_attributes.emplace_back(
+				make_pair(
+					"eventSelector",
+					toHex(u256(util::h256::Arith(util::keccak256(_node.functionType(true)->externalSignature()))))
+				));
+
+	setJsonNode(_node, "EventDefinition", std::move(_attributes));
 	return false;
 }
 
 bool ASTJsonConverter::visit(ErrorDefinition const& _node)
 {
-	setJsonNode(_node, "ErrorDefinition", {
+	std::vector<pair<string, Json::Value>> _attributes = {
 		make_pair("name", _node.name()),
 		make_pair("nameLocation", sourceLocationToString(_node.nameLocation())),
 		make_pair("documentation", _node.documentation() ? toJson(*_node.documentation()) : Json::nullValue),
 		make_pair("parameters", toJson(_node.parameterList()))
-	});
+	};
+	if (m_stackState >= CompilerStack::State::AnalysisPerformed)
+		_attributes.emplace_back(make_pair("errorSelector", _node.functionType(true)->externalIdentifierHex()));
+
+	setJsonNode(_node, "ErrorDefinition", std::move(_attributes));
 	return false;
 }
 
@@ -563,14 +613,27 @@ bool ASTJsonConverter::visit(InlineAssembly const& _node)
 
 	Json::Value externalReferencesJson = Json::arrayValue;
 
-	for (auto&& it: boost::range::sort(externalReferences))
-		externalReferencesJson.append(std::move(it.second));
+	ranges::sort(externalReferences);
+	for (Json::Value& it: externalReferences | ranges::views::values)
+		externalReferencesJson.append(std::move(it));
 
-	setJsonNode(_node, "InlineAssembly", {
+	std::vector<pair<string, Json::Value>> attributes = {
 		make_pair("AST", Json::Value(yul::AsmJsonConverter(sourceIndexFromLocation(_node.location()))(_node.operations()))),
 		make_pair("externalReferences", std::move(externalReferencesJson)),
 		make_pair("evmVersion", dynamic_cast<solidity::yul::EVMDialect const&>(_node.dialect()).evmVersion().name())
-	});
+	};
+
+	if (_node.flags())
+	{
+		Json::Value flags(Json::arrayValue);
+		for (auto const& flag: *_node.flags())
+			if (flag)
+				flags.append(*flag);
+			else
+				flags.append(Json::nullValue);
+		attributes.emplace_back(make_pair("flags", move(flags)));
+	}
+	setJsonNode(_node, "InlineAssembly", move(attributes));
 
 	return false;
 }

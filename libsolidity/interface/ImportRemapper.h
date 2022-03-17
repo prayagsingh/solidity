@@ -35,6 +35,15 @@ class ImportRemapper
 public:
 	struct Remapping
 	{
+		bool operator!=(Remapping const& _other) const noexcept { return !(*this == _other); }
+		bool operator==(Remapping const& _other) const noexcept
+		{
+			return
+				context == _other.context &&
+				prefix == _other.prefix &&
+				target == _other.target;
+		}
+
 		std::string context;
 		std::string prefix;
 		std::string target;
@@ -47,8 +56,11 @@ public:
 
 	SourceUnitName apply(ImportPath const& _path, std::string const& _context) const;
 
-	// Parses a remapping of the format "context:prefix=target".
-	static std::optional<Remapping> parseRemapping(std::string const& _remapping);
+	/// @returns true if the string can be parsed as a remapping
+	static bool isRemapping(std::string_view _input);
+
+	/// Parses a remapping of the format "context:prefix=target".
+	static std::optional<Remapping> parseRemapping(std::string_view _input);
 
 private:
 	/// list of path prefix remappings, e.g. mylibrary: github.com/ethereum = /usr/local/ethereum

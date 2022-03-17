@@ -312,7 +312,7 @@ string ABIFunctions::abiEncodingFunction(
 		{
 			case DataLocation::CallData:
 				if (
-					fromArray->isByteArray() ||
+					fromArray->isByteArrayOrString() ||
 					*fromArray->baseType() == *TypeProvider::uint256() ||
 					*fromArray->baseType() == FixedBytesType(32)
 				)
@@ -320,7 +320,7 @@ string ABIFunctions::abiEncodingFunction(
 				else
 					return abiEncodingFunctionSimpleArray(*fromArray, *toArray, _options);
 			case DataLocation::Memory:
-				if (fromArray->isByteArray())
+				if (fromArray->isByteArrayOrString())
 					return abiEncodingFunctionMemoryByteArray(*fromArray, *toArray, _options);
 				else
 					return abiEncodingFunctionSimpleArray(*fromArray, *toArray, _options);
@@ -448,7 +448,7 @@ string ABIFunctions::abiEncodingFunctionCalldataArrayWithoutCleanup(
 
 	solAssert(fromArrayType.location() == DataLocation::CallData, "");
 	solAssert(
-		fromArrayType.isByteArray() ||
+		fromArrayType.isByteArrayOrString() ||
 		*fromArrayType.baseType() == *TypeProvider::uint256() ||
 		*fromArrayType.baseType() == FixedBytesType(32),
 		""
@@ -468,7 +468,7 @@ string ABIFunctions::abiEncodingFunctionCalldataArrayWithoutCleanup(
 		_to.identifier() +
 		_options.toFunctionNameSuffix();
 	return createFunction(functionName, [&]() {
-		bool needsPadding = _options.padded && fromArrayType.isByteArray();
+		bool needsPadding = _options.padded && fromArrayType.isByteArrayOrString();
 		if (fromArrayType.isDynamicallySized())
 		{
 			Whiskers templ(R"(
@@ -482,7 +482,7 @@ string ABIFunctions::abiEncodingFunctionCalldataArrayWithoutCleanup(
 			)");
 			templ("storeLength", arrayStoreLengthForEncodingFunction(toArrayType, _options));
 			templ("functionName", functionName);
-			if (fromArrayType.isByteArray() || fromArrayType.calldataStride() == 1)
+			if (fromArrayType.isByteArrayOrString() || fromArrayType.calldataStride() == 1)
 				templ("scaleLengthByStride", "");
 			else
 				templ("scaleLengthByStride",
@@ -536,7 +536,7 @@ string ABIFunctions::abiEncodingFunctionSimpleArray(
 
 	solAssert(_from.isDynamicallySized() == _to.isDynamicallySized(), "");
 	solAssert(_from.length() == _to.length(), "");
-	solAssert(!_from.isByteArray(), "");
+	solAssert(!_from.isByteArrayOrString(), "");
 	if (_from.dataStoredIn(DataLocation::Storage))
 		solAssert(_from.baseType()->storageBytes() > 16, "");
 
@@ -647,10 +647,10 @@ string ABIFunctions::abiEncodingFunctionMemoryByteArray(
 	solAssert(_from.isDynamicallySized() == _to.isDynamicallySized(), "");
 	solAssert(_from.length() == _to.length(), "");
 	solAssert(_from.dataStoredIn(DataLocation::Memory), "");
-	solAssert(_from.isByteArray(), "");
+	solAssert(_from.isByteArrayOrString(), "");
 
 	return createFunction(functionName, [&]() {
-		solAssert(_to.isByteArray(), "");
+		solAssert(_to.isByteArrayOrString(), "");
 		Whiskers templ(R"(
 			function <functionName>(value, pos) -> end {
 				let length := <lengthFun>(value)
@@ -686,9 +686,9 @@ string ABIFunctions::abiEncodingFunctionCompactStorageArray(
 	solAssert(_from.dataStoredIn(DataLocation::Storage), "");
 
 	return createFunction(functionName, [&]() {
-		if (_from.isByteArray())
+		if (_from.isByteArrayOrString())
 		{
-			solAssert(_to.isByteArray(), "");
+			solAssert(_to.isByteArrayOrString(), "");
 			Whiskers templ(R"(
 				// <readableTypeNameFrom> -> <readableTypeNameTo>
 				function <functionName>(value, pos) -> ret {
@@ -1168,8 +1168,9 @@ string ABIFunctions::abiDecodingFunctionArray(ArrayType const& _type, bool _from
 string ABIFunctions::abiDecodingFunctionArrayAvailableLength(ArrayType const& _type, bool _fromMemory)
 {
 	solAssert(_type.dataStoredIn(DataLocation::Memory), "");
-	if (_type.isByteArray())
+	if (_type.isByteArrayOrString())
 		return abiDecodingFunctionByteArrayAvailableLength(_type, _fromMemory);
+	solAssert(_type.calldataStride() > 0, "");
 
 	string functionName =
 		"abi_decode_available_length_" +
@@ -1186,11 +1187,11 @@ string ABIFunctions::abiDecodingFunctionArrayAvailableLength(ArrayType const& _t
 					mstore(array, length)
 					dst := add(array, 0x20)
 				</dynamic>
-				let src := offset
-				if gt(add(src, mul(length, <stride>)), end) {
+				let srcEnd := add(offset, mul(length, <stride>))
+				if gt(srcEnd, end) {
 					<revertInvalidStride>()
 				}
-				for { let i := 0 } lt(i, length) { i := add(i, 1) }
+				for { let src := offset } lt(src, srcEnd) { src := add(src, <stride>) }
 				{
 					<?dynamicBase>
 						let innerOffset := <load>(src)
@@ -1201,7 +1202,6 @@ string ABIFunctions::abiDecodingFunctionArrayAvailableLength(ArrayType const& _t
 					</dynamicBase>
 					mstore(dst, <decodingFun>(elementPos, end))
 					dst := add(dst, 0x20)
-					src := add(src, <stride>)
 				}
 			}
 		)");
@@ -1275,7 +1275,7 @@ string ABIFunctions::abiDecodingFunctionCalldataArray(ArrayType const& _type)
 string ABIFunctions::abiDecodingFunctionByteArrayAvailableLength(ArrayType const& _type, bool _fromMemory)
 {
 	solAssert(_type.dataStoredIn(DataLocation::Memory), "");
-	solAssert(_type.isByteArray(), "");
+	solAssert(_type.isByteArrayOrString(), "");
 
 	string functionName =
 		"abi_decode_available_length_" +

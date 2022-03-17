@@ -13,10 +13,13 @@ contract C {
     function h() public view returns (uint) { return address(1).code.length; }
 }
 // ====
-// compileViaYul: also
 // compileToEwasm: also
+// compileViaYul: also
 // ----
 // constructor() ->
+// gas irOptimized: 194717
+// gas legacy: 240889
+// gas legacyOptimized: 155314
 // initCode() -> 0x20, 0
 // f() -> true
 // g() -> 0

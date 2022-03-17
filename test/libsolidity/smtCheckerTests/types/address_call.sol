@@ -9,19 +9,19 @@ contract C
 		(bool success, bytes memory ret) = a.call(data);
 		assert(success);
 		assert(x == 0);
-		assert(map[0] == 0);
-		assert(localMap[0] == 0);
+		// Disabled because of Spacer nondeterminism.
+		//assert(map[0] == 0);
+		// Disabled because of Spacer nondeterminism.
+		//assert(localMap[0] == 0);
 	}
 }
 // ====
 // EVMVersion: >spuriousDragon
 // SMTEngine: all
 // SMTIgnoreCex: yes
+// SMTIgnoreInv: yes
+// SMTIgnoreOS: macos
 // ----
+// Warning 2072: (127-166): Unused local variable.
 // Warning 2072: (191-207): Unused local variable.
-// Warning 4588: (211-223): Assertion checker does not yet implement this type of function call.
 // Warning 6328: (227-242): CHC: Assertion violation happens here.
-// Warning 6328: (246-260): CHC: Assertion violation happens here.
-// Warning 6328: (264-283): CHC: Assertion violation happens here.
-// Warning 6328: (287-311): CHC: Assertion violation happens here.
-// Warning 4588: (211-223): Assertion checker does not yet implement this type of function call.

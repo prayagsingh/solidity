@@ -102,14 +102,6 @@ if (("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU") OR ("${CMAKE_CXX_COMPILER_ID}" MA
 
 		# Some Linux-specific Clang settings.  We don't want these for OS X.
 		if ("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
-
-			# TODO - Is this even necessary?  Why?
-			# See http://stackoverflow.com/questions/19774778/when-is-it-necessary-to-use-use-the-flag-stdlib-libstdc.
-			add_compile_options(-stdlib=libstdc++)
-
-			# Tell Boost that we're using Clang's libc++.   Not sure exactly why we need to do.
-			add_definitions(-DBOOST_ASIO_HAS_CLANG_LIBCXX)
-
 			# Use fancy colors in the compiler diagnostics
 			add_compile_options(-fcolor-diagnostics)
 
@@ -119,39 +111,39 @@ if (("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU") OR ("${CMAKE_CXX_COMPILER_ID}" MA
 			# http://stackoverflow.com/questions/21617158/how-to-silence-unused-command-line-argument-error-with-clang-without-disabling-i
 			add_compile_options(-Qunused-arguments)
 		elseif(EMSCRIPTEN)
-			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --memory-init-file 0")
+			set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --memory-init-file 0")
 			# Leave only exported symbols as public and aggressively remove others
 			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fdata-sections -ffunction-sections -fvisibility=hidden")
 			# Optimisation level
 			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
 			# Re-enable exception catching (optimisations above -O1 disable it)
 			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s DISABLE_EXCEPTION_CATCHING=0")
+			set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s DISABLE_EXCEPTION_CATCHING=0")
 			# Remove any code related to exit (such as atexit)
-			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s EXIT_RUNTIME=0")
+			set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s EXIT_RUNTIME=0")
 			# Remove any code related to filesystem access
-			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s FILESYSTEM=0")
+			set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s FILESYSTEM=0")
 			# Allow memory growth, but disable some optimisations
-			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s ALLOW_MEMORY_GROWTH=1")
+			set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s ALLOW_MEMORY_GROWTH=1")
 			# Disable eval()
-			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s DYNAMIC_EXECUTION=0")
+			set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s DYNAMIC_EXECUTION=0")
 			# Disable greedy exception catcher
-			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s NODEJS_CATCH_EXIT=0")
+			set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s NODEJS_CATCH_EXIT=0")
 			# Abort if linking results in any undefined symbols
 			# Note: this is on by default in the CMake Emscripten module which we aren't using
-			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s ERROR_ON_UNDEFINED_SYMBOLS=1")
+			set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s ERROR_ON_UNDEFINED_SYMBOLS=1")
 			# Disallow deprecated emscripten build options.
 			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s STRICT=1")
+			set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s STRICT=1")
 			# Export the Emscripten-generated auxiliary methods which are needed by solc-js.
 			# Which methods of libsolc itself are exported is specified in libsolc/CMakeLists.txt.
-			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s EXTRA_EXPORTED_RUNTIME_METHODS=['cwrap','addFunction','removeFunction','UTF8ToString','lengthBytesUTF8','stringToUTF8','setValue']")
+			set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s EXTRA_EXPORTED_RUNTIME_METHODS=['cwrap','addFunction','removeFunction','UTF8ToString','lengthBytesUTF8','stringToUTF8','setValue']")
 			# Build for webassembly target.
-			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s WASM=1")
+			set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s WASM=1")
 			# Set webassembly build to synchronous loading.
-			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s WASM_ASYNC_COMPILATION=0")
-			# Output a single js file with the wasm binary embedded as base64 string.
-			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s SINGLE_FILE=1")
+			set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s WASM_ASYNC_COMPILATION=0")
 			# Allow new functions to be added to the wasm module via addFunction.
-			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -s ALLOW_TABLE_GROWTH=1")
+			set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s ALLOW_TABLE_GROWTH=1")
 			# Disable warnings about not being pure asm.js due to memory growth.
 			set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-almost-asm")
 		endif()
@@ -159,8 +151,11 @@ if (("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU") OR ("${CMAKE_CXX_COMPILER_ID}" MA
 
 # The major alternative compiler to GCC/Clang is Microsoft's Visual C++ compiler, only available on Windows.
 elseif (DEFINED MSVC)
+	# Remove NDEBUG from RELWITHDEBINFO (to enable asserts)
+	# CMAKE_CXX_FLAGS_RELWITHDEBINFO for GCC/Clang does not include NDEBUG
+	string(REPLACE "/DNDEBUG" " " CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
 
-    add_compile_options(/MP)						# enable parallel compilation
+	add_compile_options(/MP)						# enable parallel compilation
 	add_compile_options(/EHsc)						# specify Exception Handling Model in msvc
 	add_compile_options(/WX)						# enable warnings-as-errors
 	add_compile_options(/wd4068)					# disable unknown pragma warning (4068)
@@ -192,11 +187,41 @@ endif ()
 
 if (SANITIZE)
 	# Perform case-insensitive string compare
-	string(TOLOWER "${SANITIZE}" san)
+	string(TOLOWER "${SANITIZE}" sanitizer)
 	# -fno-omit-frame-pointer gives more informative stack trace in case of an error
 	# -fsanitize-address-use-after-scope throws an error when a variable is used beyond its scope
-	if (san STREQUAL "address")
+	if (sanitizer STREQUAL "address")
 		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer -fsanitize=address -fsanitize-address-use-after-scope")
+	elseif (sanitizer STREQUAL "undefined")
+		# The following flags not used by fuzzer but used by us may create problems, so consider
+		# disabling them: alignment, pointer-overflow.
+		# The following flag is not used by us to reduce terminal noise
+		# i.e., warnings printed on stderr: unsigned-integer-overflow
+		# Note: The C++ standard does not officially consider unsigned integer overflows
+		# to be undefined behavior since they are implementation independent.
+		# Flags are alphabetically sorted and are for clang v10.0
+		list(APPEND undefinedSanitizerChecks
+			alignment
+			array-bounds
+			bool
+			builtin
+			enum
+			float-divide-by-zero
+			function
+			integer-divide-by-zero
+			null
+			object-size
+			pointer-overflow
+			return
+			returns-nonnull-attribute
+			shift
+			signed-integer-overflow
+			unreachable
+			vla-bound
+			vptr
+		)
+		list(JOIN undefinedSanitizerChecks "," sanitizerChecks)
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=${sanitizerChecks} -fno-sanitize-recover=${sanitizerChecks}")
 	endif()
 endif()
 

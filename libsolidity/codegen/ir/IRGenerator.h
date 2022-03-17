@@ -28,7 +28,10 @@
 #include <libsolidity/ast/CallGraph.h>
 #include <libsolidity/codegen/ir/IRGenerationContext.h>
 #include <libsolidity/codegen/YulUtilFunctions.h>
+
+#include <liblangutil/CharStreamProvider.h>
 #include <liblangutil/EVMVersion.h>
+
 #include <string>
 
 namespace solidity::frontend
@@ -39,14 +42,27 @@ class SourceUnit;
 class IRGenerator
 {
 public:
+	using ExecutionContext = IRGenerationContext::ExecutionContext;
+
 	IRGenerator(
 		langutil::EVMVersion _evmVersion,
 		RevertStrings _revertStrings,
-		OptimiserSettings _optimiserSettings
+		OptimiserSettings _optimiserSettings,
+		std::map<std::string, unsigned> _sourceIndices,
+		langutil::DebugInfoSelection const& _debugInfoSelection,
+		langutil::CharStreamProvider const* _soliditySourceProvider
 	):
 		m_evmVersion(_evmVersion),
 		m_optimiserSettings(_optimiserSettings),
-		m_context(_evmVersion, _revertStrings, std::move(_optimiserSettings)),
+		m_context(
+			_evmVersion,
+			ExecutionContext::Creation,
+			_revertStrings,
+			std::move(_optimiserSettings),
+			std::move(_sourceIndices),
+			_debugInfoSelection,
+			_soliditySourceProvider
+		),
 		m_utils(_evmVersion, m_context.revertStrings(), m_context.functionCollector())
 	{}
 
@@ -54,12 +70,14 @@ public:
 	/// (or just pretty-printed, depending on the optimizer settings).
 	std::pair<std::string, std::string> run(
 		ContractDefinition const& _contract,
+		bytes const& _cborMetadata,
 		std::map<ContractDefinition const*, std::string_view const> const& _otherYulSources
 	);
 
 private:
 	std::string generate(
 		ContractDefinition const& _contract,
+		bytes const& _cborMetadata,
 		std::map<ContractDefinition const*, std::string_view const> const& _otherYulSources
 	);
 	std::string generate(Block const& _block);
@@ -72,7 +90,7 @@ private:
 	/// possibly be called via a pointer.
 	/// @return The content of the dispatch for reuse in runtime code. Reuse is necessary because
 	/// pointers to functions can be passed from the creation code in storage variables.
-	InternalDispatchMap generateInternalDispatchFunctions();
+	InternalDispatchMap generateInternalDispatchFunctions(ContractDefinition const& _contract);
 	/// Generates code for and returns the name of the function.
 	std::string generateFunction(FunctionDefinition const& _function);
 	std::string generateModifier(
@@ -83,6 +101,9 @@ private:
 	std::string generateFunctionWithModifierInner(FunctionDefinition const& _function);
 	/// Generates a getter for the given declaration and returns its name
 	std::string generateGetter(VariableDeclaration const& _varDecl);
+
+	/// Generates the external part (ABI decoding and encoding) of a function or getter.
+	std::string generateExternalFunction(ContractDefinition const& _contract, FunctionType const& _functionType);
 
 	/// Generates code that assigns the initial value of the respective type.
 	std::string generateInitialAssignment(VariableDeclaration const& _varDecl);
@@ -112,7 +133,9 @@ private:
 	/// to perform memory optimizations.
 	std::string memoryInit(bool _useMemoryGuard);
 
-	void resetContext(ContractDefinition const& _contract);
+	void resetContext(ContractDefinition const& _contract, ExecutionContext _context);
+
+	std::string dispenseLocationComment(ASTNode const& _node);
 
 	langutil::EVMVersion const m_evmVersion;
 	OptimiserSettings const m_optimiserSettings;

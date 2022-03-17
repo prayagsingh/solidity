@@ -35,6 +35,8 @@
 
 #include <libsmtutil/SolverInterface.h>
 
+#include <liblangutil/CharStreamProvider.h>
+#include <liblangutil/DebugInfoSelection.h>
 #include <liblangutil/ErrorReporter.h>
 #include <liblangutil/EVMVersion.h>
 #include <liblangutil/SourceLocation.h>
@@ -56,7 +58,7 @@
 
 namespace solidity::langutil
 {
-class Scanner;
+class CharStream;
 }
 
 
@@ -87,7 +89,7 @@ class DeclarationContainer;
  * If error recovery is active, it is possible to progress through the stages even when
  * there are errors. In any case, producing code is only possible without errors.
  */
-class CompilerStack
+class CompilerStack: public langutil::CharStreamProvider
 {
 public:
 	/// Noncopyable.
@@ -120,7 +122,7 @@ public:
 	/// and must not emit exceptions.
 	explicit CompilerStack(ReadCallback::Callback _readFile = ReadCallback::Callback());
 
-	~CompilerStack();
+	~CompilerStack() override;
 
 	/// @returns the list of errors that occurred during parsing and type checking.
 	langutil::ErrorList const& errors() const { return m_errorReporter.errors(); }
@@ -146,7 +148,7 @@ public:
 
 	/// Changes the optimiser settings.
 	/// Must be set before parsing.
-	void setOptimiserSettings(bool _optimize, unsigned _runs = 200);
+	void setOptimiserSettings(bool _optimize, size_t _runs = OptimiserSettings{}.expectedExecutionsPerDeployment);
 
 	/// Changes the optimiser settings.
 	/// Must be set before parsing.
@@ -174,8 +176,6 @@ public:
 
 	/// Set model checker settings.
 	void setModelCheckerSettings(ModelCheckerSettings _settings);
-	/// Set which SMT solvers should be enabled.
-	void setSMTSolverChoice(smtutil::SMTSolverChoice _enabledSolvers);
 
 	/// Sets the requested contract names by source.
 	/// If empty, no filtering is performed and every contract
@@ -189,7 +189,7 @@ public:
 	/// Enable EVM Bytecode generation. This is enabled by default.
 	void enableEvmBytecodeGeneration(bool _enable = true) { m_generateEvmBytecode = _enable; }
 
-	/// Enable experimental generation of Yul IR code.
+	/// Enable generation of Yul IR code.
 	void enableIRGeneration(bool _enable = true) { m_generateIR = _enable; }
 
 	/// Enable experimental generation of Ewasm code. If enabled, IR is also generated.
@@ -203,6 +203,9 @@ public:
 	/// to store the metadata in the bytecode.
 	/// @param _metadataHash can be IPFS, Bzzr1, None
 	void setMetadataHash(MetadataHash _metadataHash);
+
+	/// Select components of debug info that should be included in comments in generated assembly.
+	void selectDebugInfo(langutil::DebugInfoSelection _debugInfoSelection);
 
 	/// Sets the sources. Must be set before parsing.
 	void setSources(StringMap _sources);
@@ -239,8 +242,8 @@ public:
 	/// by sourceNames().
 	std::map<std::string, unsigned> sourceIndices() const;
 
-	/// @returns the previously used scanner, useful for counting lines during error reporting.
-	langutil::Scanner const& scanner(std::string const& _sourceName) const;
+	/// @returns the previously used character stream, useful for counting lines during error reporting.
+	langutil::CharStream const& charStream(std::string const& _sourceName) const override;
 
 	/// @returns the parsed source unit with the supplied name.
 	SourceUnit const& ast(std::string const& _sourceName) const;
@@ -248,11 +251,6 @@ public:
 	/// @returns the parsed contract with the supplied name. Throws an exception if the contract
 	/// does not exist.
 	ContractDefinition const& contractDefinition(std::string const& _contractName) const;
-
-	/// Helper function for logs printing. Do only use in error cases, it's quite expensive.
-	/// line and columns are numbered starting from 1 with following order:
-	/// start line, start column, end line, end column
-	std::tuple<int, int, int, int> positionFromSourceLocation(langutil::SourceLocation const& _sourceLocation) const;
 
 	/// @returns a list of unhandled queries to the SMT solver (has to be supplied in a second run
 	/// by calling @a addSMTLib2Response).
@@ -329,14 +327,19 @@ public:
 	/// Prerequisite: Successful call to parse or compile.
 	Json::Value const& natspecDev(std::string const& _contractName) const;
 
-	/// @returns a JSON representing a map of method identifiers (hashes) to function names.
-	Json::Value methodIdentifiers(std::string const& _contractName) const;
+	/// @returns a JSON object with the three members ``methods``, ``events``, ``errors``. Each is a map, mapping identifiers (hashes) to function names.
+	Json::Value interfaceSymbols(std::string const& _contractName) const;
 
-	/// @returns the Contract Metadata
-	std::string const& metadata(std::string const& _contractName) const;
+	/// @returns the Contract Metadata matching the pipeline selected using the viaIR setting.
+	std::string const& metadata(std::string const& _contractName) const { return metadata(contract(_contractName)); }
 
-	/// @returns the cbor-encoded metadata.
-	bytes cborMetadata(std::string const& _contractName) const;
+	/// @returns the CBOR-encoded metadata matching the pipeline selected using the viaIR setting.
+	bytes cborMetadata(std::string const& _contractName) const { return cborMetadata(_contractName, m_viaIR); }
+
+	/// @returns the CBOR-encoded metadata.
+	/// @param _forIR If true, the metadata for the IR codegen is used. Otherwise it's the metadata
+	///               for the EVM codegen
+	bytes cborMetadata(std::string const& _contractName, bool _forIR) const;
 
 	/// @returns a JSON representing the estimated gas usage for contract creation, internal and external functions
 	Json::Value gasEstimates(std::string const& _contractName) const;
@@ -345,11 +348,12 @@ public:
 	/// This is mostly a workaround to avoid bytecode and gas differences between compiler builds
 	/// caused by differences in metadata. Should only be used for testing.
 	void setMetadataFormat(MetadataFormat _metadataFormat) { m_metadataFormat = _metadataFormat; }
+
 private:
 	/// The state per source unit. Filled gradually during parsing.
 	struct Source
 	{
-		std::shared_ptr<langutil::Scanner> scanner;
+		std::shared_ptr<langutil::CharStream> charStream;
 		std::shared_ptr<SourceUnit> ast;
 		util::h256 mutable keccak256HashCached;
 		util::h256 mutable swarmHashCached;
@@ -369,8 +373,8 @@ private:
 		std::shared_ptr<evmasm::Assembly> evmRuntimeAssembly;
 		evmasm::LinkerObject object; ///< Deployment object (includes the runtime sub-object).
 		evmasm::LinkerObject runtimeObject; ///< Runtime object.
-		std::string yulIR; ///< Experimental Yul IR code.
-		std::string yulIROptimized; ///< Optimized experimental Yul IR code.
+		std::string yulIR; ///< Yul IR code.
+		std::string yulIROptimized; ///< Optimized Yul IR code.
 		std::string ewasm; ///< Experimental Ewasm text representation
 		evmasm::LinkerObject ewasmObject; ///< Experimental Ewasm code
 		util::LazyInit<std::string const> metadata; ///< The metadata json that will be hashed into the chain.
@@ -388,9 +392,9 @@ private:
 	void findAndReportCyclicContractDependencies();
 
 	/// Loads the missing sources from @a _ast (named @a _path) using the callback
-	/// @a m_readFile and stores the absolute paths of all imports in the AST annotations.
+	/// @a m_readFile
 	/// @returns the newly loaded sources.
-	StringMap loadMissingSources(SourceUnit const& _ast, std::string const& _path);
+	StringMap loadMissingSources(SourceUnit const& _ast);
 	std::string applyRemapping(std::string const& _path, std::string const& _context);
 	void resolveImports();
 
@@ -443,11 +447,13 @@ private:
 	/// Can only be called after state is SourcesSet.
 	Source const& source(std::string const& _sourceName) const;
 
+	/// @param _forIR If true, include a flag that indicates that the bytecode comes from IR codegen.
 	/// @returns the metadata JSON as a compact string for the given contract.
-	std::string createMetadata(Contract const& _contract) const;
+	std::string createMetadata(Contract const& _contract, bool _forIR) const;
 
 	/// @returns the metadata CBOR for the given serialised metadata JSON.
-	bytes createCBORMetadata(Contract const& _contract) const;
+	/// @param _forIR If true, use the metadata for the IR codegen. Otherwise the one for EVM codegen.
+	bytes createCBORMetadata(Contract const& _contract, bool _forIR) const;
 
 	/// @returns the contract ABI as a JSON object.
 	/// This will generate the JSON object and store it in the Contract object if it is not present yet.
@@ -465,9 +471,9 @@ private:
 	/// This will generate the JSON object and store it in the Contract object if it is not present yet.
 	Json::Value const& natspecDev(Contract const&) const;
 
-	/// @returns the Contract Metadata
+	/// @returns the Contract Metadata matching the pipeline selected using the viaIR setting.
 	/// This will generate the metadata and store it in the Contract object if it is not present yet.
-	std::string const& metadata(Contract const&) const;
+	std::string const& metadata(Contract const& _contract) const;
 
 	/// @returns the offset of the entry point of the given function into the list of assembly items
 	/// or zero if it is not found or does not exist.
@@ -483,7 +489,6 @@ private:
 	bool m_viaIR = false;
 	langutil::EVMVersion m_evmVersion;
 	ModelCheckerSettings m_modelCheckerSettings;
-	smtutil::SMTSolverChoice m_enabledSMTSolvers;
 	std::map<std::string, std::set<std::string>> m_requestedContractNames;
 	bool m_generateEvmBytecode = true;
 	bool m_generateIR = false;
@@ -503,6 +508,7 @@ private:
 	langutil::ErrorReporter m_errorReporter;
 	bool m_metadataLiteralSources = false;
 	MetadataHash m_metadataHash = MetadataHash::IPFS;
+	langutil::DebugInfoSelection m_debugInfoSelection = langutil::DebugInfoSelection::Default();
 	bool m_parserErrorRecovery = false;
 	State m_stackState = Empty;
 	bool m_importedSources = false;

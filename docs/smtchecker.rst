@@ -15,7 +15,7 @@ difference between what you did (the specification) and how you did it
 is what you wanted and that you did not miss any unintended effects of it.
 
 Solidity implements a formal verification approach based on
-`SMT <https://en.wikipedia.org/wiki/Satisfiability_modulo_theories>`_ and
+`SMT (Satisfiability Modulo Theories) <https://en.wikipedia.org/wiki/Satisfiability_modulo_theories>`_ and
 `Horn <https://en.wikipedia.org/wiki/Horn-satisfiability>`_ solving.
 The SMTChecker module automatically tries to prove that the code satisfies the
 specification given by ``require`` and ``assert`` statements. That is, it considers
@@ -34,6 +34,9 @@ The other verification targets that the SMTChecker checks at compile time are:
 - Out of bounds index access.
 - Insufficient funds for a transfer.
 
+All the targets above are automatically checked by default if all engines are
+enabled, except underflow and overflow for Solidity >=0.8.7.
+
 The potential warnings that the SMTChecker reports are:
 
 - ``<failing  property> happens here.``. This means that the SMTChecker proved that a certain property fails. A counterexample may be given, however in complex situations it may also not show a counterexample. This result may also be a false positive in certain cases, when the SMT encoding adds abstractions for Solidity code that is either hard or impossible to express.
@@ -44,23 +47,24 @@ where the default is no engine. Selecting the engine enables the SMTChecker on a
 
 .. note::
 
-  Prior to Solidity 0.8.4, the default way to enable the SMTChecker was via
-  ``pragma experimental SMTChecker;`` and only the contracts containing the
-  pragma would be analyzed. That pragma has been deprecated, and although it
-  still enables the SMTChecker for backwards compatibility, it will be removed
-  in Solidity 0.9.0. Note also that now using the pragma even in a single file
-  enables the SMTChecker for all files.
+    Prior to Solidity 0.8.4, the default way to enable the SMTChecker was via
+    ``pragma experimental SMTChecker;`` and only the contracts containing the
+    pragma would be analyzed. That pragma has been deprecated, and although it
+    still enables the SMTChecker for backwards compatibility, it will be removed
+    in Solidity 0.9.0. Note also that now using the pragma even in a single file
+    enables the SMTChecker for all files.
 
 .. note::
-  The lack of warnings for a verification target represents an undisputed
-  mathematical proof of correctness, assuming no bugs in the SMTChecker and
-  the underlying solver. Keep in mind that these problems are
-  *very hard* and sometimes *impossible* to solve automatically in the
-  general case.  Therefore, several properties might not be solved or might
-  lead to false positives for large contracts. Every proven property should
-  be seen as an important achievement. For advanced users, see :ref:`SMTChecker Tuning <smtchecker_options>`
-  to learn a few options that might help proving more complex
-  properties.
+
+    The lack of warnings for a verification target represents an undisputed
+    mathematical proof of correctness, assuming no bugs in the SMTChecker and
+    the underlying solver. Keep in mind that these problems are
+    *very hard* and sometimes *impossible* to solve automatically in the
+    general case.  Therefore, several properties might not be solved or might
+    lead to false positives for large contracts. Every proven property should
+    be seen as an important achievement. For advanced users, see :ref:`SMTChecker Tuning <smtchecker_options>`
+    to learn a few options that might help proving more complex
+    properties.
 
 ********
 Tutorial
@@ -78,12 +82,12 @@ Overflow
         uint immutable x;
         uint immutable y;
 
-        function add(uint _x, uint _y) internal pure returns (uint) {
-            return _x + _y;
+        function add(uint x_, uint y_) internal pure returns (uint) {
+            return x_ + y_;
         }
 
-        constructor(uint _x, uint _y) {
-            (x, y) = (_x, _y);
+        constructor(uint x_, uint y_) {
+            (x, y) = (x_, y_);
         }
 
         function stateAdd() public view returns (uint) {
@@ -92,11 +96,13 @@ Overflow
     }
 
 The contract above shows an overflow check example.
-The SMTChecker will, by default, check every reachable arithmetic operation
-in the contract for potential underflow and overflow.
+The SMTChecker does not check underflow and overflow by default for Solidity >=0.8.7,
+so we need to use the command line option ``--model-checker-targets "underflow,overflow"``
+or the JSON option ``settings.modelChecker.targets = ["underflow", "overflow"]``.
+See :ref:`this section for targets configuration<smtchecker_targets>`.
 Here, it reports the following:
 
-.. code-block:: bash
+.. code-block:: text
 
     Warning: CHC: Overflow (resulting value larger than 2**256 - 1) happens here.
     Counterexample:
@@ -110,7 +116,7 @@ Here, it reports the following:
         Overflow.add(1, 115792089237316195423570985008687907853269984665640564039457584007913129639935) -- internal call
      --> o.sol:9:20:
       |
-    9 |             return _x + _y;
+    9 |             return x_ + y_;
       |                    ^^^^^^^
 
 If we add ``require`` statements that filter out overflow cases,
@@ -125,12 +131,12 @@ the SMTChecker proves that no overflow is reachable (by not reporting warnings):
         uint immutable x;
         uint immutable y;
 
-        function add(uint _x, uint _y) internal pure returns (uint) {
-            return _x + _y;
+        function add(uint x_, uint y_) internal pure returns (uint) {
+            return x_ + y_;
         }
 
-        constructor(uint _x, uint _y) {
-            (x, y) = (_x, _y);
+        constructor(uint x_, uint y_) {
+            (x, y) = (x_, y_);
         }
 
         function stateAdd() public view returns (uint) {
@@ -149,7 +155,7 @@ An assertion represents an invariant in your code: a property that must be true
 
 The code below defines a function ``f`` that guarantees no overflow.
 Function ``inv`` defines the specification that ``f`` is monotonically increasing:
-for every possible pair ``(_a, _b)``, if ``_b > _a`` then ``f(_b) > f(_a)``.
+for every possible pair ``(a, b)``, if ``b > a`` then ``f(b) > f(a)``.
 Since ``f`` is indeed monotonically increasing, the SMTChecker proves that our
 property is correct. You are encouraged to play with the property and the function
 definition to see what results come out!
@@ -160,14 +166,14 @@ definition to see what results come out!
     pragma solidity >=0.8.0;
 
     contract Monotonic {
-        function f(uint _x) internal pure returns (uint) {
-            require(_x < type(uint128).max);
-            return _x * 42;
+        function f(uint x) internal pure returns (uint) {
+            require(x < type(uint128).max);
+            return x * 42;
         }
 
-        function inv(uint _a, uint _b) public pure {
-            require(_b > _a);
-            assert(f(_b) > f(_a));
+        function inv(uint a, uint b) public pure {
+            require(b > a);
+            assert(f(b) > f(a));
         }
     }
 
@@ -182,14 +188,14 @@ equal every element in the array.
     pragma solidity >=0.8.0;
 
     contract Max {
-        function max(uint[] memory _a) public pure returns (uint) {
+        function max(uint[] memory a) public pure returns (uint) {
             uint m = 0;
-            for (uint i = 0; i < _a.length; ++i)
-                if (_a[i] > m)
-                    m = _a[i];
+            for (uint i = 0; i < a.length; ++i)
+                if (a[i] > m)
+                    m = a[i];
 
-            for (uint i = 0; i < _a.length; ++i)
-                assert(m >= _a[i]);
+            for (uint i = 0; i < a.length; ++i)
+                assert(m >= a[i]);
 
             return m;
         }
@@ -202,8 +208,9 @@ Note that in this example the SMTChecker will automatically try to prove three p
 3. The assertion is always true.
 
 .. note::
-  The properties involve loops, which makes it *much much* harder than the previous
-  examples, so beware of loops!
+
+    The properties involve loops, which makes it *much much* harder than the previous
+    examples, so beware of loops!
 
 All the properties are correctly proven safe. Feel free to change the
 properties and/or add restrictions on the array to see different results.
@@ -215,15 +222,15 @@ For example, changing the code to
     pragma solidity >=0.8.0;
 
     contract Max {
-        function max(uint[] memory _a) public pure returns (uint) {
-            require(_a.length >= 5);
+        function max(uint[] memory a) public pure returns (uint) {
+            require(a.length >= 5);
             uint m = 0;
-            for (uint i = 0; i < _a.length; ++i)
-                if (_a[i] > m)
-                    m = _a[i];
+            for (uint i = 0; i < a.length; ++i)
+                if (a[i] > m)
+                    m = a[i];
 
-            for (uint i = 0; i < _a.length; ++i)
-                assert(m > _a[i]);
+            for (uint i = 0; i < a.length; ++i)
+                assert(m > a[i]);
 
             return m;
         }
@@ -231,20 +238,20 @@ For example, changing the code to
 
 gives us:
 
-.. code-block:: bash
+.. code-block:: text
 
-  Warning: CHC: Assertion violation happens here.
-  Counterexample:
+    Warning: CHC: Assertion violation happens here.
+    Counterexample:
 
-  _a = [0, 0, 0, 0, 0]
-   = 0
+    a = [0, 0, 0, 0, 0]
+     = 0
 
-  Transaction trace:
-  Test.constructor()
-  Test.max([0, 0, 0, 0, 0])
-    --> max.sol:14:4:
-     |
-  14 | 			assert(m > _a[i]);
+    Transaction trace:
+    Test.constructor()
+    Test.max([0, 0, 0, 0, 0])
+      --> max.sol:14:4:
+       |
+    14 |            assert(m > a[i]);
 
 
 State Properties
@@ -321,28 +328,28 @@ reachable, by adding the following function.
 This property is false, and while proving that the property is false,
 the SMTChecker tells us exactly *how* to reach (2, 4):
 
-.. code-block:: bash
+.. code-block:: text
 
-  Warning: CHC: Assertion violation happens here.
-  Counterexample:
-  x = 2, y = 4
+    Warning: CHC: Assertion violation happens here.
+    Counterexample:
+    x = 2, y = 4
 
-  Transaction trace:
-  Robot.constructor()
-  State: x = 0, y = 0
-  Robot.moveLeftUp()
-  State: x = (- 1), y = 1
-  Robot.moveRightUp()
-  State: x = 0, y = 2
-  Robot.moveRightUp()
-  State: x = 1, y = 3
-  Robot.moveRightUp()
-  State: x = 2, y = 4
-  Robot.reach_2_4()
-    --> r.sol:35:4:
-     |
-  35 | 			assert(!(x == 2 && y == 4));
-     | 			^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    Transaction trace:
+    Robot.constructor()
+    State: x = 0, y = 0
+    Robot.moveLeftUp()
+    State: x = (- 1), y = 1
+    Robot.moveRightUp()
+    State: x = 0, y = 2
+    Robot.moveRightUp()
+    State: x = 1, y = 3
+    Robot.moveRightUp()
+    State: x = 2, y = 4
+    Robot.reach_2_4()
+      --> r.sol:35:4:
+       |
+    35 |            assert(!(x == 2 && y == 4));
+       |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Note that the path above is not necessarily deterministic, as there are
 other paths that could reach (2, 4). The choice of which path is shown
@@ -367,36 +374,36 @@ anything, including reenter the caller contract.
     pragma solidity >=0.8.0;
 
     interface Unknown {
-    	function run() external;
+        function run() external;
     }
 
     contract Mutex {
-    	uint x;
-    	bool lock;
+        uint x;
+        bool lock;
 
-    	Unknown immutable unknown;
+        Unknown immutable unknown;
 
-    	constructor(Unknown _u) {
-    		require(address(_u) != address(0));
-    		unknown = _u;
-    	}
+        constructor(Unknown u) {
+            require(address(u) != address(0));
+            unknown = u;
+        }
 
-    	modifier mutex {
-    		require(!lock);
-    		lock = true;
-    		_;
-    		lock = false;
-    	}
+        modifier mutex {
+            require(!lock);
+            lock = true;
+            _;
+            lock = false;
+        }
 
-    	function set(uint _x) mutex public {
-    		x = _x;
-    	}
+        function set(uint x_) mutex public {
+            x = x_;
+        }
 
-    	function run() mutex public {
-    		uint xPre = x;
-    		unknown.run();
-    		assert(xPre == x);
-    	}
+        function run() mutex public {
+            uint xPre = x;
+            unknown.run();
+            assert(xPre == x);
+        }
     }
 
 The example above shows a contract that uses a mutex flag to forbid reentrancy.
@@ -405,25 +412,25 @@ is already "locked", so it would not be possible to change the value of ``x``,
 regardless of what the unknown called code does.
 
 If we "forget" to use the ``mutex`` modifier on function ``set``, the
-SMTChecker is able to synthesize the behavior of the externally called code so
+SMTChecker is able to synthesize the behaviour of the externally called code so
 that the assertion fails:
 
-.. code-block:: bash
+.. code-block:: text
 
-  Warning: CHC: Assertion violation happens here.
-  Counterexample:
-  x = 1, lock = true, unknown = 1
+    Warning: CHC: Assertion violation happens here.
+    Counterexample:
+    x = 1, lock = true, unknown = 1
 
-  Transaction trace:
-  Mutex.constructor(1)
-  State: x = 0, lock = false, unknown = 1
-  Mutex.run()
-      unknown.run() -- untrusted external call, synthesized as:
-          Mutex.set(1) -- reentrant call
-    --> m.sol:32:3:
-     |
-  32 | 		assert(xPre == x);
-     | 		^^^^^^^^^^^^^^^^^
+    Transaction trace:
+    Mutex.constructor(1)
+    State: x = 0, lock = false, unknown = 1
+    Mutex.run()
+        unknown.run() -- untrusted external call, synthesized as:
+            Mutex.set(1) -- reentrant call
+      --> m.sol:32:3:
+       |
+    32 | 		assert(xPre == x);
+       | 		^^^^^^^^^^^^^^^^^
 
 
 .. _smtchecker_options:
@@ -444,6 +451,8 @@ are very complex and need a lot of time to be solved, where determinism does not
 If the SMTChecker does not manage to solve the contract properties with the default ``rlimit``,
 a timeout can be given in milliseconds via the CLI option ``--model-checker-timeout <time>`` or
 the JSON option ``settings.modelChecker.timeout=<time>``, where 0 means no timeout.
+
+.. _smtchecker_targets:
 
 Verification Targets
 ====================
@@ -469,8 +478,18 @@ The keywords that represent the targets are:
 A common subset of targets might be, for example:
 ``--model-checker-targets assert,overflow``.
 
+All targets are checked by default, except underflow and overflow for Solidity >=0.8.7.
+
 There is no precise heuristic on how and when to split verification targets,
 but it can be useful especially when dealing with large contracts.
+
+Unproved Targets
+================
+
+If there are any unproved targets, the SMTChecker issues one warning stating
+how many unproved targets there are. If the user wishes to see all the specific
+unproved targets, the CLI option ``--model-checker-show-unproved`` and
+the JSON option ``settings.modelChecker.showUnproved = true`` can be used.
 
 Verified Contracts
 ==================
@@ -492,16 +511,41 @@ allowed) of <source>:<contract> pairs in the CLI:
 and via the object ``settings.modelChecker.contracts`` in the :ref:`JSON input<compiler-api>`,
 which has the following form:
 
-.. code-block:: none
+.. code-block:: json
 
-  contracts
-  {
-      "source1.sol": ["contract1"],
-      "source2.sol": ["contract2", "contract3"]
-  }
+    "contracts": {
+        "source1.sol": ["contract1"],
+        "source2.sol": ["contract2", "contract3"]
+    }
 
+Reported Inferred Inductive Invariants
+======================================
 
-.. _smtchecker_engines:
+For properties that were proved safe with the CHC engine,
+the SMTChecker can retrieve inductive invariants that were inferred by the Horn
+solver as part of the proof.
+Currently two types of invariants can be reported to the user:
+
+- Contract Invariants: these are properties over the contract's state variables
+  that are true before and after every possible transaction that the contract may ever run. For example, ``x >= y``, where ``x`` and ``y`` are a contract's state variables.
+- Reentrancy Properties: they represent the behavior of the contract
+  in the presence of external calls to unknown code. These properties can express a relation
+  between the value of the state variables before and after the external call, where the external call is free to do anything, including making reentrant calls to the analyzed contract. Primed variables represent the state variables' values after said external call. Example: ``lock -> x = x'``.
+
+The user can choose the type of invariants to be reported using the CLI option ``--model-checker-invariants "contract,reentrancy"`` or as an array in the field ``settings.modelChecker.invariants`` in the :ref:`JSON input<compiler-api>`.
+By default the SMTChecker does not report invariants.
+
+Division and Modulo With Slack Variables
+========================================
+
+Spacer, the default Horn solver used by the SMTChecker, often dislikes division
+and modulo operations inside Horn rules. Because of that, by default the
+Solidity division and modulo operations are encoded using the constraint
+``a = b * d + m`` where ``d = a / b`` and ``m = a % b``.
+However, other solvers, such as Eldarica, prefer the syntactically precise operations.
+The command line flag ``--model-checker-div-mod-no-slacks`` and the JSON option
+``settings.modelChecker.divModNoSlacks`` can be used to toggle the encoding
+depending on the used solver preferences.
 
 Natspec Function Abstraction
 ============================
@@ -514,6 +558,8 @@ body of the function is not used, and when called, the function will:
 
 - Return a nondeterministic value, and either keep the state variables unchanged if the abstracted function is view/pure, or also set the state variables to nondeterministic values otherwise. This can be used via the annotation ``/// @custom:smtchecker abstract-function-nondet``.
 - Act as an uninterpreted function. This means that the semantics of the function (given by the body) are ignored, and the only property this function has is that given the same input it guarantees the same output. This is currently under development and will be available via the annotation ``/// @custom:smtchecker abstract-function-uf``.
+
+.. _smtchecker_engines:
 
 Model Checking Engines
 ======================
@@ -557,6 +603,39 @@ calls assume the called code is unknown and can do anything.
 The CHC engine is much more powerful than BMC in terms of what it can prove,
 and might require more computing resources.
 
+SMT and Horn solvers
+====================
+
+The two engines detailed above use automated theorem provers as their logical
+backends.  BMC uses an SMT solver, whereas CHC uses a Horn solver. Often the
+same tool can act as both, as seen in `z3 <https://github.com/Z3Prover/z3>`_,
+which is primarily an SMT solver and makes `Spacer
+<https://spacer.bitbucket.io/>`_ available as a Horn solver, and `Eldarica
+<https://github.com/uuverifiers/eldarica>`_ which does both.
+
+The user can choose which solvers should be used, if available, via the CLI
+option ``--model-checker-solvers {all,cvc4,smtlib2,z3}`` or the JSON option
+``settings.modelChecker.solvers=[smtlib2,z3]``, where:
+
+- ``cvc4`` is only available if the ``solc`` binary is compiled with it. Only BMC uses ``cvc4``.
+- ``smtlib2`` outputs SMT/Horn queries in the `smtlib2 <http://smtlib.cs.uiowa.edu/>`_ format.
+  These can be used together with the compiler's `callback mechanism <https://github.com/ethereum/solc-js>`_ so that
+  any solver binary from the system can be employed to synchronously return the results of the queries to the compiler.
+  This is currently the only way to use Eldarica, for example, since it does not have a C++ API.
+  This can be used by both BMC and CHC depending on which solvers are called.
+- ``z3`` is available
+
+  - if ``solc`` is compiled with it;
+  - if a dynamic ``z3`` library of version 4.8.x is installed in a Linux system (from Solidity 0.7.6);
+  - statically in ``soljson.js`` (from Solidity 0.6.9), that is, the Javascript binary of the compiler.
+
+Since both BMC and CHC use ``z3``, and ``z3`` is available in a greater variety
+of environments, including in the browser, most users will almost never need to be
+concerned about this option. More advanced users might apply this option to try
+alternative solvers on more complex problems.
+
+Please note that certain combinations of chosen engine and solver will lead to
+the SMTChecker doing nothing, for example choosing CHC and ``cvc4``.
 
 *******************************
 Abstraction and False Positives
@@ -666,7 +745,7 @@ the arguments.
 Using abstraction means loss of precise knowledge, but in many cases it does
 not mean loss of proving power.
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
     pragma solidity >=0.8.0;
@@ -675,15 +754,15 @@ not mean loss of proving power.
     {
         function f(
             bytes32 hash,
-            uint8 _v1, uint8 _v2,
-            bytes32 _r1, bytes32 _r2,
-            bytes32 _s1, bytes32 _s2
+            uint8 v1, uint8 v2,
+            bytes32 r1, bytes32 r2,
+            bytes32 s1, bytes32 s2
         ) public pure returns (address) {
-            address a1 = ecrecover(hash, _v1, _r1, _s1);
-            require(_v1 == _v2);
-            require(_r1 == _r2);
-            require(_s1 == _s2);
-            address a2 = ecrecover(hash, _v2, _r2, _s2);
+            address a1 = ecrecover(hash, v1, r1, s1);
+            require(v1 == v2);
+            require(r1 == r2);
+            require(s1 == s2);
+            address a2 = ecrecover(hash, v2, r2, s2);
             assert(a1 == a2);
             return a1;
         }
@@ -713,7 +792,7 @@ location is erased.
 If the type is nested, the knowledge removal also includes all the prefix base
 types.
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
     pragma solidity >=0.8.0;
@@ -768,6 +847,25 @@ are located in storage, even though they also have type ``uint[]``.  However,
 if ``d`` was assigned, we would need to clear knowledge about ``array`` and
 vice-versa.
 
+Contract Balance
+================
+
+A contract may be deployed with funds sent to it, if ``msg.value`` > 0 in the
+deployment transaction.
+However, the contract's address may already have funds before deployment,
+which are kept by the contract.
+Therefore, the SMTChecker assumes that ``address(this).balance >= msg.value``
+in the constructor in order to be consistent with the EVM rules.
+The contract's balance may also increase without triggering any calls to the
+contract, if
+
+- ``selfdestruct`` is executed by another contract with the analyzed contract
+  as the target of the remaining funds,
+- the contract is the coinbase (i.e., ``block.coinbase``) of some block.
+
+To model this properly, the SMTChecker assumes that at every new transaction
+the contract's balance may grow by at least ``msg.value``.
+
 **********************
 Real World Assumptions
 **********************
@@ -779,3 +877,7 @@ push: If the ``push`` operation is applied to an array of length 2^256 - 1, its
 length silently overflows.
 However, this is unlikely to happen in practice, since the operations required
 to grow the array to that point would take billions of years to execute.
+Another similar assumption taken by the SMTChecker is that an address' balance
+can never overflow.
+
+A similar idea was presented in `EIP-1985 <https://eips.ethereum.org/EIPS/eip-1985>`_.

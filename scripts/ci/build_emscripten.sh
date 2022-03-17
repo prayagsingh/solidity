@@ -40,6 +40,8 @@ else
 	BUILD_DIR="$1"
 fi
 
+apt-get update && apt-get install lz4
+
 WORKSPACE=/root/project
 
 cd $WORKSPACE
@@ -68,15 +70,11 @@ emcmake cmake \
 	-DTESTS=0 \
   ..
 make soljson
-# Patch soljson.js for backwards compatibility.
-# TODO: remove this with 0.7.
-# "viiiii" encodes the signature of the callback function.
-sed -i -e 's/addFunction(func,sig){/addFunction(func,sig){sig=sig||"viiiii";/' libsolc/soljson.js
 
 cd ..
 mkdir -p upload
-cp "$BUILD_DIR/libsolc/soljson.js" upload/
-cp "$BUILD_DIR/libsolc/soljson.js" ./
+scripts/ci/pack_soljson.sh "$BUILD_DIR/libsolc/soljson.js" "$BUILD_DIR/libsolc/soljson.wasm" upload/soljson.js
+cp upload/soljson.js ./
 
 OUTPUT_SIZE=$(ls -la soljson.js)
 

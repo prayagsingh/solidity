@@ -23,7 +23,7 @@ This contract of course does not solve the problem, but gives an overview of how
 you can use state machine-like constructs inside a contract.
 
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
     pragma solidity ^0.8.4;
@@ -36,8 +36,8 @@ you can use state machine-like constructs inside a contract.
         // The state variable has a default value of the first member, `State.created`
         State public state;
 
-        modifier condition(bool _condition) {
-            require(_condition);
+        modifier condition(bool condition_) {
+            require(condition_);
             _;
         }
 
@@ -62,8 +62,8 @@ you can use state machine-like constructs inside a contract.
             _;
         }
 
-        modifier inState(State _state) {
-            if (state != _state)
+        modifier inState(State state_) {
+            if (state != state_)
                 revert InvalidState();
             _;
         }
@@ -87,7 +87,7 @@ you can use state machine-like constructs inside a contract.
         /// Can only be called by the seller before
         /// the contract is locked.
         function abort()
-            public
+            external
             onlySeller
             inState(State.Created)
         {
@@ -105,7 +105,7 @@ you can use state machine-like constructs inside a contract.
         /// The ether will be locked until confirmReceived
         /// is called.
         function confirmPurchase()
-            public
+            external
             inState(State.Created)
             condition(msg.value == (2 * value))
             payable
@@ -118,7 +118,7 @@ you can use state machine-like constructs inside a contract.
         /// Confirm that you (the buyer) received the item.
         /// This will release the locked ether.
         function confirmReceived()
-            public
+            external
             onlyBuyer
             inState(State.Locked)
         {
@@ -134,7 +134,7 @@ you can use state machine-like constructs inside a contract.
         /// This function refunds the seller, i.e.
         /// pays back the locked funds of the seller.
         function refundSeller()
-            public
+            external
             onlySeller
             inState(State.Release)
         {

@@ -18,31 +18,76 @@
 #
 # (c) 2019 solidity contributors.
 #------------------------------------------------------------------------------
+
+set -e
+
 source scripts/common.sh
 source test/externalTests/common.sh
 
-verify_input "$1"
-SOLJSON="$1"
+REPO_ROOT=$(realpath "$(dirname "$0")/../..")
 
-function install_fn { npm install --package-lock; }
-function compile_fn { npx truffle compile; }
+verify_input "$@"
+BINARY_TYPE="$1"
+BINARY_PATH="$2"
+SELECTED_PRESETS="$3"
+
+function compile_fn { npm run build; }
 function test_fn { npm test; }
 
 function gnosis_safe_test
 {
-    OPTIMIZER_LEVEL=2
-    CONFIG="truffle-config.js"
+    local repo="https://github.com/gnosis/safe-contracts.git"
+    local ref_type=branch
+    local ref=main
+    local config_file="hardhat.config.ts"
+    local config_var=userConfig
 
-    truffle_setup "$SOLJSON" https://github.com/solidity-external-tests/safe-contracts.git development_080
+    local compile_only_presets=()
+    local settings_presets=(
+        "${compile_only_presets[@]}"
+        #ir-no-optimize            # Compilation fails with "YulException: Variable var_call_430_mpos is 1 slot(s) too deep inside the stack."
+        #ir-optimize-evm-only      # Compilation fails with "YulException: Variable var_call_430_mpos is 1 slot(s) too deep inside the stack."
+        ir-optimize-evm+yul
+        legacy-no-optimize
+        legacy-optimize-evm-only
+        legacy-optimize-evm+yul
+    )
 
-    sed -i 's|github:gnosis/mock-contract#sol_0_5_0|github:solidity-external-tests/mock-contract#master_080|g' package.json
+    [[ $SELECTED_PRESETS != "" ]] || SELECTED_PRESETS=$(circleci_select_steps_multiarg "${settings_presets[@]}")
+    print_presets_or_exit "$SELECTED_PRESETS"
 
-    # Remove the lock file (if it exists) to prevent it from overriding our changes in package.json
-    rm -f package-lock.json
+    setup_solc "$DIR" "$BINARY_TYPE" "$BINARY_PATH"
+    download_project "$repo" "$ref_type" "$ref" "$DIR"
+    [[ $BINARY_TYPE == native ]] && replace_global_solc "$BINARY_PATH"
 
-    run_install "$SOLJSON" install_fn
+    # NOTE: The patterns below intentionally have hard-coded versions.
+    # When the upstream updates them, there's a chance we can just remove the regex.
+    sed -i 's|"@gnosis\.pm/mock-contract": "\^4\.0\.0"|"@gnosis.pm/mock-contract": "github:solidity-external-tests/mock-contract#master_080"|g' package.json
+    sed -i 's|"@openzeppelin/contracts": "\^3\.4\.0"|"@openzeppelin/contracts": "^4.0.0"|g' package.json
 
-    truffle_run_test "$SOLJSON" compile_fn test_fn
+    # Disable two tests failing due to Hardhat's heuristics not yet updated to handle solc 0.8.10.
+    # TODO: Remove this when Hardhat implements them (https://github.com/nomiclabs/hardhat/issues/2051).
+    sed -i "s|\(it\)\(('should revert if called directly', async () => {\)|\1.skip\2|g" test/handlers/CompatibilityFallbackHandler.spec.ts
+
+    # Disable tests that won't pass on the ir presets due to Hardhat heuristics. Note that this also disables
+    # them for other presets but that's fine - we want same code run for benchmarks to be comparable.
+    # TODO: Remove this when Hardhat adjusts heuristics for IR (https://github.com/nomiclabs/hardhat/issues/2115).
+    sed -i "s|\(it\)\(('should not allow to call setup on singleton'\)|\1.skip\2|g" test/core/GnosisSafe.Setup.spec.ts
+
+    neutralize_package_lock
+    neutralize_package_json_hooks
+    force_hardhat_compiler_binary "$config_file" "$BINARY_TYPE" "$BINARY_PATH"
+    force_hardhat_compiler_settings "$config_file" "$(first_word "$SELECTED_PRESETS")" "$config_var"
+    npm install
+    npm install hardhat-gas-reporter
+
+    replace_version_pragmas
+    [[ $BINARY_TYPE == solcjs ]] && force_solc_modules "${DIR}/solc/dist"
+
+    for preset in $SELECTED_PRESETS; do
+        hardhat_run_test "$config_file" "$preset" "${compile_only_presets[*]}" compile_fn test_fn "$config_var"
+        store_benchmark_report hardhat gnosis "$repo" "$preset"
+    done
 }
 
 external_test Gnosis-Safe gnosis_safe_test

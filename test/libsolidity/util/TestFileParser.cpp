@@ -16,6 +16,9 @@
 */
 // SPDX-License-Identifier: GPL-3.0
 
+
+#include <libsolutil/StringUtils.h>
+
 #include <test/libsolidity/util/TestFileParser.h>
 
 #include <test/libsolidity/util/BytesUtils.h>
@@ -34,6 +37,7 @@
 #include <stdexcept>
 
 using namespace solidity;
+using namespace solidity::util;
 using namespace solidity::frontend;
 using namespace solidity::frontend::test;
 using namespace std;
@@ -100,8 +104,26 @@ vector<solidity::frontend::test::FunctionCall> TestFileParser::parseFunctionCall
 						if (accept(Token::Library, true))
 						{
 							expect(Token::Colon);
-							call.signature = m_scanner.currentLiteral();
-							expect(Token::Identifier);
+							string libraryName;
+							if (accept(Token::String))
+							{
+								libraryName = m_scanner.currentLiteral();
+								expect(Token::String);
+								expect(Token::Colon);
+								libraryName += ':' + m_scanner.currentLiteral();
+								expect(Token::Identifier);
+							}
+							else if (accept(Token::Colon, true))
+							{
+								libraryName = ':' + m_scanner.currentLiteral();
+								expect(Token::Identifier);
+							}
+							else
+							{
+								libraryName = m_scanner.currentLiteral();
+								expect(Token::Identifier);
+							}
+							call.signature = libraryName;
 							call.kind = FunctionCall::Kind::Library;
 							call.expectations.failure = false;
 						}
@@ -407,11 +429,17 @@ Parameter TestFileParser::parseParameter()
 		if (isSigned)
 			parsed = "-" + parsed;
 
-		parameter.rawBytes = BytesUtils::applyAlign(
-			parameter.alignment,
-			parameter.abiType,
-			BytesUtils::convertNumber(parsed)
-		);
+		if (parsed.find('.') == string::npos)
+			parameter.rawBytes = BytesUtils::applyAlign(
+				parameter.alignment,
+				parameter.abiType,
+				BytesUtils::convertNumber(parsed)
+			);
+		else
+		{
+			parameter.abiType.type = isSigned ? ABIType::SignedFixedPoint : ABIType::UnsignedFixedPoint;
+			parameter.rawBytes = BytesUtils::convertFixedPoint(parsed, parameter.abiType.fractionalDigits);
+		}
 	}
 	else if (accept(Token::Failure, true))
 	{
@@ -667,7 +695,7 @@ string TestFileParser::Scanner::scanDecimalNumber()
 {
 	string number;
 	number += current();
-	while (langutil::isDecimalDigit(peek()))
+	while (langutil::isDecimalDigit(peek()) || '.' == peek())
 	{
 		advance();
 		number += current();
@@ -738,13 +766,15 @@ string TestFileParser::Scanner::scanString()
 // TODO: use fromHex() from CommonData
 char TestFileParser::Scanner::scanHexPart()
 {
+	auto toLower = [](char _c) -> char { return tolower(_c, locale::classic()); };
+
 	advance(); // skip 'x'
 
 	int value{};
-	if (isdigit(current()))
+	if (isDigit(current()))
 		value = current() - '0';
-	else if (tolower(current()) >= 'a' && tolower(current()) <= 'f')
-		value = tolower(current()) - 'a' + 10;
+	else if (toLower(current()) >= 'a' && toLower(current()) <= 'f')
+		value = toLower(current()) - 'a' + 10;
 	else
 		BOOST_THROW_EXCEPTION(TestParserError("\\x used with no following hex digits."));
 
@@ -753,10 +783,10 @@ char TestFileParser::Scanner::scanHexPart()
 		return static_cast<char>(value);
 
 	value <<= 4;
-	if (isdigit(current()))
+	if (isDigit(current()))
 		value |= current() - '0';
-	else if (tolower(current()) >= 'a' && tolower(current()) <= 'f')
-		value |= tolower(current()) - 'a' + 10;
+	else if (toLower(current()) >= 'a' && toLower(current()) <= 'f')
+		value |= toLower(current()) - 'a' + 10;
 
 	advance();
 

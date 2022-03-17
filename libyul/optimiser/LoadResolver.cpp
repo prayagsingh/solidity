@@ -82,12 +82,12 @@ void LoadResolver::tryResolve(
 	YulString key = std::get<Identifier>(_arguments.at(0)).name;
 	if (_location == StoreLoadLocation::Storage)
 	{
-		if (auto value = util::valueOrNullptr(m_storage, key))
+		if (auto value = storageValue(key))
 			if (inScope(*value))
 				_e = Identifier{debugDataOf(_e), *value};
 	}
 	else if (!m_containsMSize && _location == StoreLoadLocation::Memory)
-		if (auto value = util::valueOrNullptr(m_memory, key))
+		if (auto value = memoryValue(key))
 			if (inScope(*value))
 				_e = Identifier{debugDataOf(_e), *value};
 }
@@ -97,6 +97,13 @@ void LoadResolver::tryEvaluateKeccak(
 	std::vector<Expression> const& _arguments
 )
 {
+	yulAssert(_arguments.size() == 2, "");
+	Identifier const* memoryKey = std::get_if<Identifier>(&_arguments.at(0));
+	Identifier const* length = std::get_if<Identifier>(&_arguments.at(1));
+
+	if (!memoryKey || !length)
+		return;
+
 	// The costs are only correct for hashes of 32 bytes or 1 word (when rounded up).
 	GasMeter gasMeter{
 		dynamic_cast<EVMDialect const&>(m_dialect),
@@ -122,17 +129,10 @@ void LoadResolver::tryEvaluateKeccak(
 	if (costOfLiteral > costOfKeccak)
 		return;
 
-	yulAssert(_arguments.size() == 2, "");
-	Identifier const* memoryKey = std::get_if<Identifier>(&_arguments.at(0));
-	Identifier const* length = std::get_if<Identifier>(&_arguments.at(1));
-
-	if (!memoryKey || !length)
-		return;
-
-	auto memoryValue = util::valueOrNullptr(m_memory, memoryKey->name);
-	if (memoryValue && inScope(*memoryValue))
+	optional<YulString> value = memoryValue(memoryKey->name);
+	if (value && inScope(*value))
 	{
-		optional<u256> memoryContent = valueOfIdentifier(*memoryValue);
+		optional<u256> memoryContent = valueOfIdentifier(*value);
 		optional<u256> byteLength = valueOfIdentifier(length->name);
 		if (memoryContent && byteLength && *byteLength <= 32)
 		{

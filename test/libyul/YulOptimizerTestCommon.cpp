@@ -28,6 +28,7 @@
 #include <libyul/optimiser/ConditionalUnsimplifier.h>
 #include <libyul/optimiser/ConditionalSimplifier.h>
 #include <libyul/optimiser/CommonSubexpressionEliminator.h>
+#include <libyul/optimiser/EqualStoreEliminator.h>
 #include <libyul/optimiser/EquivalentFunctionCombiner.h>
 #include <libyul/optimiser/ExpressionSplitter.h>
 #include <libyul/optimiser/FunctionGrouper.h>
@@ -52,7 +53,8 @@
 #include <libyul/optimiser/SSAReverser.h>
 #include <libyul/optimiser/SSATransform.h>
 #include <libyul/optimiser/Semantics.h>
-#include <libyul/optimiser/RedundantAssignEliminator.h>
+#include <libyul/optimiser/UnusedAssignEliminator.h>
+#include <libyul/optimiser/UnusedStoreEliminator.h>
 #include <libyul/optimiser/StructuralSimplifier.h>
 #include <libyul/optimiser/StackCompressor.h>
 #include <libyul/optimiser/Suite.h>
@@ -61,7 +63,6 @@
 #include <libyul/backends/evm/EVMMetrics.h>
 #include <libyul/backends/wasm/WordSizeTransform.h>
 #include <libyul/backends/wasm/WasmDialect.h>
-#include <libyul/AsmPrinter.h>
 #include <libyul/AsmAnalysis.h>
 #include <libyul/CompilabilityChecker.h>
 
@@ -232,16 +233,31 @@ YulOptimizerTestCommon::YulOptimizerTestCommon(
 			ForLoopInitRewriter::run(*m_context, *m_ast);
 			SSATransform::run(*m_context, *m_ast);
 		}},
-		{"redundantAssignEliminator", [&]() {
+		{"unusedAssignEliminator", [&]() {
 			disambiguate();
 			ForLoopInitRewriter::run(*m_context, *m_ast);
-			RedundantAssignEliminator::run(*m_context, *m_ast);
+			UnusedAssignEliminator::run(*m_context, *m_ast);
+		}},
+		{"unusedStoreEliminator", [&]() {
+			disambiguate();
+			ForLoopInitRewriter::run(*m_context, *m_ast);
+			ExpressionSplitter::run(*m_context, *m_ast);
+			SSATransform::run(*m_context, *m_ast);
+			UnusedStoreEliminator::run(*m_context, *m_ast);
+			SSAReverser::run(*m_context, *m_ast);
+			ExpressionJoiner::run(*m_context, *m_ast);
+		}},
+		{"equalStoreEliminator", [&]() {
+			disambiguate();
+			FunctionHoister::run(*m_context, *m_ast);
+			ForLoopInitRewriter::run(*m_context, *m_ast);
+			EqualStoreEliminator::run(*m_context, *m_ast);
 		}},
 		{"ssaPlusCleanup", [&]() {
 			disambiguate();
 			ForLoopInitRewriter::run(*m_context, *m_ast);
 			SSATransform::run(*m_context, *m_ast);
-			RedundantAssignEliminator::run(*m_context, *m_ast);
+			UnusedAssignEliminator::run(*m_context, *m_ast);
 		}},
 		{"loadResolver", [&]() {
 			disambiguate();
@@ -294,7 +310,7 @@ YulOptimizerTestCommon::YulOptimizerTestCommon(
 			ForLoopInitRewriter::run(*m_context, *m_ast);
 			// apply SSA
 			SSATransform::run(*m_context, *m_ast);
-			RedundantAssignEliminator::run(*m_context, *m_ast);
+			UnusedAssignEliminator::run(*m_context, *m_ast);
 			// reverse SSA
 			SSAReverser::run(*m_context, *m_ast);
 			FunctionHoister::run(*m_context, *m_ast);
@@ -345,6 +361,10 @@ YulOptimizerTestCommon::YulOptimizerTestCommon(
 				{
 					YulString originalFunctionName = m_currentFunction;
 					m_currentFunction = _function.name;
+					for (TypedName const& _argument: _function.parameters)
+						visitVariableName(_argument.name);
+					for (TypedName const& _argument: _function.returnVariables)
+						visitVariableName(_argument.name);
 					ASTWalker::operator()(_function);
 					m_currentFunction = originalFunctionName;
 				}

@@ -101,21 +101,25 @@ bytes compileFirstExpression(
 )
 {
 	string sourceCode = "pragma solidity >=0.0; // SPDX-License-Identifier: GPL-3\n" + _sourceCode;
+	CharStream stream(sourceCode, "");
 
 	ASTPointer<SourceUnit> sourceUnit;
 	try
 	{
 		ErrorList errors;
 		ErrorReporter errorReporter(errors);
-		sourceUnit = Parser(errorReporter, solidity::test::CommonOptions::get().evmVersion()).parse(
-			make_shared<Scanner>(CharStream(sourceCode, ""))
-		);
+		sourceUnit = Parser(errorReporter, solidity::test::CommonOptions::get().evmVersion()).parse(stream);
 		if (!sourceUnit)
 			return bytes();
 	}
-	catch(boost::exception const& _e)
+	catch (boost::exception const& _e)
 	{
-		auto msg = std::string("Parsing source code failed with: \n") + boost::diagnostic_information(_e);
+		string msg = "Parsing source code failed with:\n" + boost::diagnostic_information(_e);
+		BOOST_FAIL(msg);
+	}
+	catch (...)
+	{
+		string msg = "Parsing source code failed with:\n" + boost::current_exception_diagnostic_information();
 		BOOST_FAIL(msg);
 	}
 
@@ -346,7 +350,7 @@ BOOST_AUTO_TEST_CASE(arithmetic)
 			uint8_t(Instruction::JUMPDEST),
 			uint8_t(Instruction::PUSH32)
 		} +
-		fromHex("4E487B7100000000000000000000000000000000000000000000000000000000") +
+		util::fromHex("4E487B7100000000000000000000000000000000000000000000000000000000") +
 		bytes{
 			uint8_t(Instruction::PUSH1), 0x0,
 			uint8_t(Instruction::MSTORE),

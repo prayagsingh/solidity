@@ -29,6 +29,8 @@
 #include <libsolidity/codegen/MultiUseYulFunctionCollector.h>
 #include <libsolidity/codegen/ir/Common.h>
 
+#include <liblangutil/CharStreamProvider.h>
+#include <liblangutil/DebugInfoSelection.h>
 #include <liblangutil/EVMVersion.h>
 
 #include <libsolutil/Common.h>
@@ -65,14 +67,24 @@ using InternalDispatchMap = std::map<YulArity, DispatchSet>;
 class IRGenerationContext
 {
 public:
+	enum class ExecutionContext { Creation, Deployed };
+
 	IRGenerationContext(
 		langutil::EVMVersion _evmVersion,
+		ExecutionContext _executionContext,
 		RevertStrings _revertStrings,
-		OptimiserSettings _optimiserSettings
+		OptimiserSettings _optimiserSettings,
+		std::map<std::string, unsigned> _sourceIndices,
+		langutil::DebugInfoSelection const& _debugInfoSelection,
+		langutil::CharStreamProvider const* _soliditySourceProvider
 	):
 		m_evmVersion(_evmVersion),
+		m_executionContext(_executionContext),
 		m_revertStrings(_revertStrings),
-		m_optimiserSettings(std::move(_optimiserSettings))
+		m_optimiserSettings(std::move(_optimiserSettings)),
+		m_sourceIndices(std::move(_sourceIndices)),
+		m_debugInfoSelection(_debugInfoSelection),
+		m_soliditySourceProvider(_soliditySourceProvider)
 	{}
 
 	MultiUseYulFunctionCollector& functionCollector() { return m_functions; }
@@ -137,6 +149,7 @@ public:
 	YulUtilFunctions utils();
 
 	langutil::EVMVersion evmVersion() const { return m_evmVersion; }
+	ExecutionContext executionContext() const { return m_executionContext; }
 
 	void setArithmetic(Arithmetic _value) { m_arithmetic = _value; }
 	Arithmetic arithmetic() const { return m_arithmetic; }
@@ -147,13 +160,33 @@ public:
 
 	std::set<ContractDefinition const*, ASTNode::CompareByID>& subObjectsCreated() { return m_subObjects; }
 
-	bool inlineAssemblySeen() const { return m_inlineAssemblySeen; }
-	void setInlineAssemblySeen() { m_inlineAssemblySeen = true; }
+	bool memoryUnsafeInlineAssemblySeen() const { return m_memoryUnsafeInlineAssemblySeen; }
+	void setMemoryUnsafeInlineAssemblySeen() { m_memoryUnsafeInlineAssemblySeen = true; }
+
+	/// @returns the runtime ID to be used for the function in the dispatch routine
+	/// and for internal function pointers.
+	/// @param _requirePresent if false, generates a new ID if not yet done.
+	uint64_t internalFunctionID(FunctionDefinition const& _function, bool _requirePresent);
+	/// Copies the internal function IDs from the @a _other. For use in transferring
+	/// function IDs from constructor code to deployed code.
+	void copyFunctionIDsFrom(IRGenerationContext const& _other);
+
+	std::map<std::string, unsigned> const& sourceIndices() const { return m_sourceIndices; }
+	void markSourceUsed(std::string const& _name) { m_usedSourceNames.insert(_name); }
+	std::set<std::string> const& usedSourceNames() const { return m_usedSourceNames; }
+
+	bool immutableRegistered(VariableDeclaration const& _varDecl) const { return m_immutableVariables.count(&_varDecl); }
+
+	langutil::DebugInfoSelection debugInfoSelection() const { return m_debugInfoSelection; }
+	langutil::CharStreamProvider const* soliditySourceProvider() const { return m_soliditySourceProvider; }
 
 private:
 	langutil::EVMVersion m_evmVersion;
+	ExecutionContext m_executionContext;
 	RevertStrings m_revertStrings;
 	OptimiserSettings m_optimiserSettings;
+	std::map<std::string, unsigned> m_sourceIndices;
+	std::set<std::string> m_usedSourceNames;
 	ContractDefinition const* m_mostDerivedContract = nullptr;
 	std::map<VariableDeclaration const*, IRVariable> m_localVariables;
 	/// Memory offsets reserved for the values of immutable variables during contract creation.
@@ -169,8 +202,8 @@ private:
 	/// Whether to use checked or wrapping arithmetic.
 	Arithmetic m_arithmetic = Arithmetic::Checked;
 
-	/// Flag indicating whether any inline assembly block was seen.
-	bool m_inlineAssemblySeen = false;
+	/// Flag indicating whether any memory-unsafe inline assembly block was seen.
+	bool m_memoryUnsafeInlineAssemblySeen = false;
 
 	/// Function definitions queued for code generation. They're the Solidity functions whose calls
 	/// were discovered by the IR generator during AST traversal.
@@ -186,8 +219,13 @@ private:
 	/// the code contains a call via a pointer even though a specific function is never assigned to it.
 	/// It will fail at runtime but the code must still compile.
 	InternalDispatchMap m_internalDispatchMap;
+	/// Map used by @a internalFunctionID.
+	std::map<int64_t, uint64_t> m_functionIDs;
 
 	std::set<ContractDefinition const*, ASTNode::CompareByID> m_subObjects;
+
+	langutil::DebugInfoSelection m_debugInfoSelection = {};
+	langutil::CharStreamProvider const* m_soliditySourceProvider = nullptr;
 };
 
 }

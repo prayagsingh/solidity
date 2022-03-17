@@ -7,10 +7,8 @@
 #     ./soltest --color_output=false --log_level=test_suite -t semanticTests/extracted/ -- --no-smt
 #         --evmonepath /Users/alex/evmone/lib/libevmone.dylib --show-messages > semanticTests.trace
 #
-# verify-testcases.py will compare both traces. If these traces are identical, the extracted tests where
+# verify-testcases.py will compare both traces. If these traces are identical, the extracted tests were
 # identical with the tests specified in SolidityEndToEndTest.cpp.
-#
-# pylint: disable=too-many-instance-attributes
 
 import re
 import os
@@ -32,11 +30,11 @@ class Trace:
     def get_input(self):
         return self._input
 
-    def set_input(self, input):
+    def set_input(self, bytecode):
         if self.kind == "create":
             # remove cbor encoded metadata from bytecode
-            length = int(input[-4:], 16) * 2
-            self._input = input[:len(input) - length - 4]
+            length = int(bytecode[-4:], 16) * 2
+            self._input = bytecode[:len(bytecode) - length - 4]
 
     def get_output(self):
         return self._output
@@ -75,7 +73,7 @@ class TraceAnalyser:
         self.ready = False
 
     def analyse(self):
-        with open(self.file, "r") as trace_file:
+        with open(self.file, "r", encoding='utf8') as trace_file:
             trace = None
             test_case = None
             for line in trace_file.readlines():
@@ -110,21 +108,21 @@ class TraceAnalyser:
 
     @staticmethod
     def parse_parameters(line, trace):
-        input = re.search(r'\s*in:\s*([a-fA-F0-9]*)', line, re.M | re.I)
-        if input:
-            trace.input = input.group(1)
-        output = re.search(r'\s*out:\s*([a-fA-F0-9]*)', line, re.M | re.I)
-        if output:
-            trace.output = output.group(1)
-        result = re.search(r'\s*result:\s*([a-fA-F0-9]*)', line, re.M | re.I)
-        if result:
-            trace.result = result.group(1)
-        gas_used = re.search(r'\s*gas\sused:\s*([a-fA-F0-9]*)', line, re.M | re.I)
-        if gas_used:
-            trace.gas = gas_used.group(1)
-        value = re.search(r'\s*value:\s*([a-fA-F0-9]*)', line, re.M | re.I)
-        if value:
-            trace.value = value.group(1)
+        input_match = re.search(r'\s*in:\s*([a-fA-F0-9]*)', line, re.M | re.I)
+        if input_match:
+            trace.input = input_match.group(1)
+        output_match = re.search(r'\s*out:\s*([a-fA-F0-9]*)', line, re.M | re.I)
+        if output_match:
+            trace.output = output_match.group(1)
+        result_match = re.search(r'\s*result:\s*([a-fA-F0-9]*)', line, re.M | re.I)
+        if result_match:
+            trace.result = result_match.group(1)
+        gas_used_match = re.search(r'\s*gas\sused:\s*([a-fA-F0-9]*)', line, re.M | re.I)
+        if gas_used_match:
+            trace.gas = gas_used_match.group(1)
+        value_match = re.search(r'\s*value:\s*([a-fA-F0-9]*)', line, re.M | re.I)
+        if value_match:
+            trace.value = value_match.group(1)
 
     def diff(self, analyser):
         if not self.ready:
@@ -154,11 +152,12 @@ class TraceAnalyser:
 
         print(len(intersection), "test-cases - ", len(mismatches), " mismatche(s)")
 
-    def check_traces(self, test_name, left, right, mismatches):
-        for trace_id in range(0, len(left.traces)):
-            left_trace = left.traces[trace_id]
+    @classmethod
+    def check_traces(cls, test_name, left, right, mismatches):
+        for trace_id, trace in enumerate(left.traces):
+            left_trace = trace
             right_trace = right.traces[trace_id]
-            assert (left_trace.kind == right_trace.kind)
+            assert left_trace.kind == right_trace.kind
             if str(left_trace) != str(right_trace):
                 mismatch_info = "    " + str(left_trace) + "\n"
                 mismatch_info += "    " + str(right_trace) + "\n"
@@ -179,7 +178,7 @@ def main(argv):
     extracted_tests_trace_file = None
     end_to_end_trace_file = None
     try:
-        opts, args = getopt.getopt(argv, "s:e:")
+        opts, _args = getopt.getopt(argv, "s:e:")
     except getopt.GetoptError:
         print("verify-testcases.py [-s <path to semantic-trace>] [-e <path to endToEndExtraction-trace>]")
         sys.exit(2)

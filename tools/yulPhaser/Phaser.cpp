@@ -27,12 +27,13 @@
 #include <tools/yulPhaser/SimulationRNG.h>
 
 #include <liblangutil/CharStream.h>
+#include <liblangutil/CharStreamProvider.h>
+#include <liblangutil/SourceReferenceFormatter.h>
+#include <liblangutil/Scanner.h>
 
 #include <libsolutil/Assertions.h>
 #include <libsolutil/CommonData.h>
 #include <libsolutil/CommonIO.h>
-
-#include <boost/filesystem.hpp>
 
 #include <iostream>
 
@@ -389,7 +390,9 @@ vector<Program> ProgramFactory::build(Options const& _options)
 		variant<Program, ErrorList> programOrErrors = Program::load(sourceCode);
 		if (holds_alternative<ErrorList>(programOrErrors))
 		{
-			cerr << get<ErrorList>(programOrErrors) << endl;
+			SourceReferenceFormatter{cerr, SingletonCharStreamProvider(sourceCode), true, false}
+				.printErrorInformation(get<ErrorList>(programOrErrors));
+			cerr << endl;
 			assertThrow(false, InvalidProgram, "Failed to load program " + path);
 		}
 
@@ -400,12 +403,12 @@ vector<Program> ProgramFactory::build(Options const& _options)
 	return inputPrograms;
 }
 
-CharStream ProgramFactory::loadSource(string const& _sourcePath)
+CharStream ProgramFactory::loadSource(boost::filesystem::path const& _sourcePath)
 {
-	assertThrow(boost::filesystem::exists(_sourcePath), MissingFile, "Source file does not exist: " + _sourcePath);
+	assertThrow(boost::filesystem::exists(_sourcePath), MissingFile, "Source file does not exist: " + _sourcePath.string());
 
 	string sourceCode = readFileAsString(_sourcePath);
-	return CharStream(sourceCode, _sourcePath);
+	return CharStream(sourceCode, _sourcePath.string());
 }
 
 void Phaser::main(int _argc, char** _argv)

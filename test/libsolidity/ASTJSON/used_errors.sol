@@ -1,8 +1,8 @@
 error X();
-function f() { revert X(); }
+function f() pure { revert X(); }
 contract C {
     error T();
-    function h() public pure { f(); }
+    function h() public { f(); }
 }
 
 // ----

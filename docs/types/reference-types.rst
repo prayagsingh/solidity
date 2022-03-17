@@ -27,19 +27,23 @@ Every reference type has an additional
 annotation, the "data location", about where it is stored. There are three data locations:
 ``memory``, ``storage`` and ``calldata``. Calldata is a non-modifiable,
 non-persistent area where function arguments are stored, and behaves mostly like memory.
-It is required for parameters of external functions but can also be used for other variables.
-
-
-.. note::
-    Prior to version 0.5.0 the data location could be omitted, and would default to different locations
-    depending on the kind of variable, function type, etc., but all complex types must now give an explicit
-    data location.
 
 .. note::
     If you can, try to use ``calldata`` as data location because it will avoid copies and
     also makes sure that the data cannot be modified. Arrays and structs with ``calldata``
     data location can also be returned from functions, but it is not possible to
     allocate such types.
+
+.. note::
+    Prior to version 0.6.9 data location for reference-type arguments was limited to
+    ``calldata`` in external functions, ``memory`` in public functions and either
+    ``memory`` or ``storage`` in internal and private ones.
+    Now ``memory`` and ``calldata`` are allowed in all functions regardless of their visibility.
+
+.. note::
+    Prior to version 0.5.0 the data location could be omitted, and would default to different locations
+    depending on the kind of variable, function type, etc., but all complex types must now give an explicit
+    data location.
 
 .. _data-location-assignment:
 
@@ -60,7 +64,7 @@ Data locations are not only relevant for persistency of data, but also for the s
   variables of storage struct type, even if the local variable
   itself is just a reference.
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
     pragma solidity >=0.5.0 <0.9.0;
@@ -139,17 +143,18 @@ a reference to it.
 ``bytes`` and ``string`` as Arrays
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Variables of type ``bytes`` and ``string`` are special arrays. A ``bytes`` is similar to ``byte[]``,
+Variables of type ``bytes`` and ``string`` are special arrays. The ``bytes`` type is similar to ``bytes1[]``,
 but it is packed tightly in calldata and memory. ``string`` is equal to ``bytes`` but does not allow
 length or index access.
 
 Solidity does not have string manipulation functions, but there are
 third-party string libraries. You can also compare two strings by their keccak256-hash using
 ``keccak256(abi.encodePacked(s1)) == keccak256(abi.encodePacked(s2))`` and
-concatenate two strings using ``bytes.concat(bytes(s1), bytes(s2))``.
+concatenate two strings using ``string.concat(s1, s2)``.
 
-You should use ``bytes`` over ``byte[]`` because it is cheaper,
-since ``byte[]`` adds 31 padding bytes between the elements. As a general rule,
+You should use ``bytes`` over ``bytes1[]`` because it is cheaper,
+since using ``bytes1[]`` in ``memory`` adds 31 padding bytes between the elements. Note that in ``storage``, the
+padding is absent due to tight packing, see :ref:`bytes and string <bytes-and-string>`. As a general rule,
 use ``bytes`` for arbitrary-length raw byte data and ``string`` for arbitrary-length
 string (UTF-8) data. If you can limit the length to a certain number of bytes,
 always use one of the value types ``bytes1`` to ``bytes32`` because they are much cheaper.
@@ -160,31 +165,40 @@ always use one of the value types ``bytes1`` to ``bytes32`` because they are muc
     that you are accessing the low-level bytes of the UTF-8 representation,
     and not the individual characters.
 
-.. index:: ! bytes-concat
+.. index:: ! bytes-concat, ! string-concat
 
 .. _bytes-concat:
+.. _string-concat:
 
-``bytes.concat`` function
-^^^^^^^^^^^^^^^^^^^^^^^^^
+The functions ``bytes.concat`` and ``string.concat``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-You can concatenate a variable number of ``bytes`` or ``bytes1 ... bytes32`` using ``bytes.concat``.
+You can concatenate an arbitrary number of ``string`` values using ``string.concat``.
+The function returns a single ``string memory`` array that contains the contents of the arguments without padding.
+If you want to use parameters of other types that are not implicitly convertible to ``string``, you need to convert them to ``string`` first.
+
+Analogously, the ``bytes.concat`` function can concatenate an arbitrary number of ``bytes`` or ``bytes1 ... bytes32`` values.
 The function returns a single ``bytes memory`` array that contains the contents of the arguments without padding.
-If you want to use string parameters or other types, you need to convert them to ``bytes`` or ``bytes1``/.../``bytes32`` first.
+If you want to use string parameters or other types that are not implicitly convertible to ``bytes``, you need to convert them to ``bytes`` or ``bytes1``/.../``bytes32`` first.
 
-::
+
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
-    pragma solidity ^0.8.4;
+    pragma solidity ^0.8.12;
 
     contract C {
-        bytes s = "Storage";
-        function f(bytes calldata c, string memory m, bytes16 b) public view {
-            bytes memory a = bytes.concat(s, c, c[:2], "Literal", bytes(m), b);
-            assert((s.length + c.length + 2 + 7 + bytes(m).length + 16) == a.length);
+        string s = "Storage";
+        function f(bytes calldata bc, string memory sm, bytes16 b) public view {
+            string memory concatString = string.concat(s, string(bc), "Literal", sm);
+            assert((bytes(s).length + bc.length + 7 + bytes(sm).length) == bytes(concatString).length);
+
+            bytes memory concatBytes = bytes.concat(bytes(s), bc, bc[:2], "Literal", bytes(sm), b);
+            assert((bytes(s).length + bc.length + 2 + 7 + bytes(sm).length + b.length) == concatBytes.length);
         }
     }
 
-If you call ``bytes.concat`` without arguments it will return an empty ``bytes`` array.
+If you call ``string.concat`` or ``bytes.concat`` without arguments they return an empty array.
 
 .. index:: ! array;allocating, new
 
@@ -200,7 +214,7 @@ or create a new memory array and copy every element.
 As all variables in Solidity, the elements of newly allocated arrays are always initialized
 with the :ref:`default value<default-value>`.
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
     pragma solidity >=0.4.16 <0.9.0;
@@ -239,7 +253,7 @@ In the example below, the type of ``[1, 2, 3]`` is
 you want the result to be a ``uint[3] memory`` type, you need to convert
 the first element to ``uint``.
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
     pragma solidity >=0.4.16 <0.9.0;
@@ -261,7 +275,7 @@ Since fixed-size memory arrays of different type cannot be converted into each o
 (even if the base types can), you always have to specify a common base type explicitly
 if you want to use two-dimensional array literals:
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
     pragma solidity >=0.4.16 <0.9.0;
@@ -278,7 +292,7 @@ if you want to use two-dimensional array literals:
 Fixed size memory arrays cannot be assigned to dynamically-sized
 memory arrays, i.e. the following is not possible:
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
     pragma solidity >=0.4.0 <0.9.0;
@@ -298,7 +312,7 @@ complications because of how arrays are passed in the ABI.
 If you want to initialize dynamically-sized arrays, you have to assign the
 individual elements:
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
     pragma solidity >=0.4.16 <0.9.0;
@@ -332,9 +346,9 @@ Array Members
      Dynamic storage arrays and ``bytes`` (not ``string``) have a member function
      called ``push(x)`` that you can use to append a given element at the end of the array.
      The function returns nothing.
-**pop**:
+**pop()**:
      Dynamic storage arrays and ``bytes`` (not ``string``) have a member
-     function called ``pop`` that you can use to remove an element from the
+     function called ``pop()`` that you can use to remove an element from the
      end of the array. This also implicitly calls :ref:`delete<delete>` on the removed element.
 
 .. note::
@@ -356,26 +370,26 @@ Array Members
     that return dynamic arrays, make sure to use an EVM that is set to
     Byzantium mode.
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
     pragma solidity >=0.6.0 <0.9.0;
 
     contract ArrayContract {
-        uint[2**20] m_aLotOfIntegers;
+        uint[2**20] aLotOfIntegers;
         // Note that the following is not a pair of dynamic arrays but a
         // dynamic array of pairs (i.e. of fixed size arrays of length two).
         // Because of that, T[] is always a dynamic array of T, even if T
         // itself is an array.
         // Data location for all state variables is storage.
-        bool[2][] m_pairsOfFlags;
+        bool[2][] pairsOfFlags;
 
         // newPairs is stored in memory - the only possibility
         // for public contract function arguments
         function setAllFlagPairs(bool[2][] memory newPairs) public {
             // assignment to a storage array performs a copy of ``newPairs`` and
-            // replaces the complete array ``m_pairsOfFlags``.
-            m_pairsOfFlags = newPairs;
+            // replaces the complete array ``pairsOfFlags``.
+            pairsOfFlags = newPairs;
         }
 
         struct StructType {
@@ -397,45 +411,45 @@ Array Members
 
         function setFlagPair(uint index, bool flagA, bool flagB) public {
             // access to a non-existing index will throw an exception
-            m_pairsOfFlags[index][0] = flagA;
-            m_pairsOfFlags[index][1] = flagB;
+            pairsOfFlags[index][0] = flagA;
+            pairsOfFlags[index][1] = flagB;
         }
 
         function changeFlagArraySize(uint newSize) public {
             // using push and pop is the only way to change the
             // length of an array
-            if (newSize < m_pairsOfFlags.length) {
-                while (m_pairsOfFlags.length > newSize)
-                    m_pairsOfFlags.pop();
-            } else if (newSize > m_pairsOfFlags.length) {
-                while (m_pairsOfFlags.length < newSize)
-                    m_pairsOfFlags.push();
+            if (newSize < pairsOfFlags.length) {
+                while (pairsOfFlags.length > newSize)
+                    pairsOfFlags.pop();
+            } else if (newSize > pairsOfFlags.length) {
+                while (pairsOfFlags.length < newSize)
+                    pairsOfFlags.push();
             }
         }
 
         function clear() public {
             // these clear the arrays completely
-            delete m_pairsOfFlags;
-            delete m_aLotOfIntegers;
+            delete pairsOfFlags;
+            delete aLotOfIntegers;
             // identical effect here
-            m_pairsOfFlags = new bool[2][](0);
+            pairsOfFlags = new bool[2][](0);
         }
 
-        bytes m_byteData;
+        bytes byteData;
 
         function byteArrays(bytes memory data) public {
             // byte arrays ("bytes") are different as they are stored without padding,
             // but can be treated identical to "uint8[]"
-            m_byteData = data;
+            byteData = data;
             for (uint i = 0; i < 7; i++)
-                m_byteData.push();
-            m_byteData[3] = 0x08;
-            delete m_byteData[2];
+                byteData.push();
+            byteData[3] = 0x08;
+            delete byteData[2];
         }
 
         function addFlag(bool[2] memory flag) public returns (uint) {
-            m_pairsOfFlags.push(flag);
-            return m_pairsOfFlags.length;
+            pairsOfFlags.push(flag);
+            return pairsOfFlags.length;
         }
 
         function createMemoryArray(uint size) public pure returns (bytes memory) {
@@ -489,29 +503,29 @@ they only exist in intermediate expressions.
 
 Array slices are useful to ABI-decode secondary data passed in function parameters:
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
-    pragma solidity >0.8.4 <0.9.0;
+    pragma solidity >=0.8.5 <0.9.0;
     contract Proxy {
         /// @dev Address of the client contract managed by proxy i.e., this contract
         address client;
 
-        constructor(address _client) {
-            client = _client;
+        constructor(address client_) {
+            client = client_;
         }
 
         /// Forward call to "setOwner(address)" that is implemented by client
         /// after doing basic validation on the address argument.
-        function forward(bytes calldata _payload) external {
-            bytes4 sig = bytes4(_payload[:4]);
-            // Due to truncating behaviour, bytes4(_payload) performs identically.
-            // bytes4 sig = bytes4(_payload);
+        function forward(bytes calldata payload) external {
+            bytes4 sig = bytes4(payload[:4]);
+            // Due to truncating behaviour, bytes4(payload) performs identically.
+            // bytes4 sig = bytes4(payload);
             if (sig == bytes4(keccak256("setOwner(address)"))) {
-                address owner = abi.decode(_payload[4:], (address));
+                address owner = abi.decode(payload[4:], (address));
                 require(owner != address(0), "Address of owner cannot be zero.");
             }
-            (bool status,) = client.delegatecall(_payload);
+            (bool status,) = client.delegatecall(payload);
             require(status, "Forwarded call failed.");
         }
     }
@@ -528,7 +542,7 @@ Structs
 Solidity provides a way to define new types in the form of structs, which is
 shown in the following example:
 
-::
+.. code-block:: solidity
 
     // SPDX-License-Identifier: GPL-3.0
     pragma solidity >=0.6.0 <0.9.0;
@@ -559,7 +573,7 @@ shown in the following example:
         function newCampaign(address payable beneficiary, uint goal) public returns (uint campaignID) {
             campaignID = numCampaigns++; // campaignID is return variable
             // We cannot use "campaigns[campaignID] = Campaign(beneficiary, goal, 0, 0)"
-            // because the RHS creates a memory-struct "Campaign" that contains a mapping.
+            // because the right hand side creates a memory-struct "Campaign" that contains a mapping.
             Campaign storage c = campaigns[campaignID];
             c.beneficiary = beneficiary;
             c.fundingGoal = goal;

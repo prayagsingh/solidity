@@ -23,6 +23,9 @@
 
 #include <liblangutil/Exceptions.h>
 
+#include <boost/algorithm/string/case_conv.hpp>
+#include <boost/algorithm/string/trim.hpp>
+
 using namespace std;
 using namespace solidity;
 using namespace solidity::langutil;
@@ -47,6 +50,9 @@ Error::Error(
 	case Type::DocstringParsingError:
 		m_typeName = "DocstringParsingError";
 		break;
+	case Type::Info:
+		m_typeName = "Info";
+		break;
 	case Type::ParserError:
 		m_typeName = "ParserError";
 		break;
@@ -67,4 +73,26 @@ Error::Error(
 		*this << errinfo_secondarySourceLocation(_secondaryLocation);
 	if (!_description.empty())
 		*this << util::errinfo_comment(_description);
+}
+
+SourceLocation const* Error::sourceLocation() const noexcept
+{
+	return boost::get_error_info<errinfo_sourceLocation>(*this);
+}
+
+SecondarySourceLocation const* Error::secondarySourceLocation() const noexcept
+{
+	return boost::get_error_info<errinfo_secondarySourceLocation>(*this);
+}
+
+optional<Error::Severity> Error::severityFromString(string _input)
+{
+	boost::algorithm::to_lower(_input);
+	boost::algorithm::trim(_input);
+
+	for (Severity severity: {Severity::Error, Severity::Warning, Severity::Info})
+		if (_input == formatErrorSeverityLowercase(severity))
+			return severity;
+
+	return nullopt;
 }

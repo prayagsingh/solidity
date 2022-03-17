@@ -11,6 +11,8 @@ set(sources
 	ConstantOptimiser.h
 	ControlFlowGraph.cpp
 	ControlFlowGraph.h
+	Disassemble.cpp
+	Disassemble.h
 	Exceptions.h
 	ExpressionClasses.cpp
 	ExpressionClasses.h
@@ -38,4 +40,4 @@ set(sources
 )
 
 add_library(evmasm ${sources})
-target_link_libraries(evmasm PUBLIC solutil)
+target_link_libraries(evmasm PUBLIC solutil fmt::fmt-header-only)

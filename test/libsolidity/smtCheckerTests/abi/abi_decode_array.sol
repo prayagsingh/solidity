@@ -30,21 +30,8 @@ contract C {
 }
 // ====
 // SMTEngine: all
+// SMTIgnoreCex: yes
 // ----
-// Warning 8364: (162-168): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (170-176): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (283-289): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (291-297): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (532-538): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (540-546): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (548-554): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (769-775): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (769-777): Assertion checker does not yet implement type type(uint256[] memory[] memory)
-// Warning 8364: (779-785): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (779-787): Assertion checker does not yet implement type type(uint256[] memory[] memory)
-// Warning 8364: (779-789): Assertion checker does not yet implement type type(uint256[] memory[] memory[] memory)
-// Warning 8364: (989-995): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (997-1003): Assertion checker does not yet implement type type(uint256[] memory)
 // Warning 6328: (182-210): CHC: Assertion violation happens here.
 // Warning 6328: (335-363): CHC: Assertion violation happens here.
 // Warning 6328: (414-442): CHC: Assertion violation happens here.
@@ -55,17 +42,3 @@ contract C {
 // Warning 6328: (1009-1037): CHC: Assertion violation happens here.
 // Warning 6328: (1056-1084): CHC: Assertion violation happens here.
 // Warning 6328: (1103-1131): CHC: Assertion violation happens here.
-// Warning 8364: (162-168): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (170-176): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (283-289): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (291-297): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (532-538): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (540-546): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (548-554): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (769-775): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (769-777): Assertion checker does not yet implement type type(uint256[] memory[] memory)
-// Warning 8364: (779-785): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (779-787): Assertion checker does not yet implement type type(uint256[] memory[] memory)
-// Warning 8364: (779-789): Assertion checker does not yet implement type type(uint256[] memory[] memory[] memory)
-// Warning 8364: (989-995): Assertion checker does not yet implement type type(uint256[] memory)
-// Warning 8364: (997-1003): Assertion checker does not yet implement type type(uint256[] memory)

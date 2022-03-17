@@ -27,7 +27,7 @@ done
 SOLIDITY_REPO_URL="https://github.com/ethereum/solidity"
 SOLC_JS_REPO_URL="https://github.com/ethereum/solc-js"
 SOLC_JS_BRANCH=wasmRebuildTests
-RELEASE_URL="https://raw.githubusercontent.com/ethereum/solc-bin/gh-pages/bin"
+RELEASE_URL="https://binaries.soliditylang.org/bin"
 RELEASE_COMMIT_LIST_URL="$RELEASE_URL/list.txt"
 
 SCRIPTDIR=$(dirname "$0")
@@ -38,7 +38,8 @@ ORANGE='\033[0;33m'
 CYAN='\033[0;36m'
 RESET='\033[0m'
 
-function generate_bytecode_report() {
+function generate_bytecode_report
+{
   rm -rf /tmp/report.txt
 
   local EXIT_STATUS
@@ -74,7 +75,8 @@ function generate_bytecode_report() {
     echo -e "${RED}FAILURE${RESET}"
   fi
 }
-function clean_git_checkout() {
+function clean_git_checkout
+{
   git submodule deinit --all -q
   git reset --hard HEAD --quiet
   git clean -f -d -x --quiet
@@ -82,7 +84,8 @@ function clean_git_checkout() {
   git submodule init -q
   git submodule update -q
 }
-function process_tag() {
+function process_tag
+{
   local TAG=$1
   cd /src
   # Checkout the historic commit instead of the tag directly.
@@ -193,6 +196,7 @@ cp scripts/bytecodecompare/storebytecode.sh /tmp
 # shellcheck disable=SC2016
 sed -i -e 's/rm -rf "\$TMPDIR"/cp "\$TMPDIR"\/report.txt \/tmp\/report.txt ; rm -rf "\$TMPDIR"/' /tmp/storebytecode.sh
 sed -i -e 's/REPO_ROOT=.*/REPO_ROOT=\/src/' /tmp/storebytecode.sh
+sed -i -e 's/git clone/git clone --branch '"${SOLC_JS_BRANCH}"'/' /tmp/storebytecode.sh
 export SOLC_EMSCRIPTEN="On"
 
 echo "Check out solc-js repository..."
@@ -210,7 +214,9 @@ ln -sf /emsdk_portable/emscripten/bin/* /usr/local/bin
 rm -rf /src
 ln -sf /root/project /src
 
+echo "Install dependencies and upgrade system packages."
 apt-get -qq update >/dev/null 2>&1
+apt-get -qq upgrade >/dev/null 2>&1
 apt-get -qq install cmake >/dev/null 2>&1
 
 echo "Create output directories."
@@ -234,6 +240,7 @@ wget -q "${RELEASE_COMMIT_LIST_URL}" -O /tmp/release_commit_list.txt
 
 cd /src
 TAGS=$(git tag --list "${TAG_FILTER}" | tac)
+echo "Matching tags: ${TAGS}"
 for TAG in ${TAGS}; do
   process_tag "${TAG}"
 done

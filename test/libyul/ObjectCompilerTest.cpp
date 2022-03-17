@@ -25,7 +25,9 @@
 #include <libyul/AssemblyStack.h>
 
 #include <libevmasm/Instruction.h>
+#include <libevmasm/Disassemble.h>
 
+#include <liblangutil/DebugInfoSelection.h>
 #include <liblangutil/SourceReferenceFormatter.h>
 
 #include <boost/algorithm/string.hpp>
@@ -64,12 +66,14 @@ TestCase::TestResult ObjectCompilerTest::run(ostream& _stream, string const& _li
 	AssemblyStack stack(
 		EVMVersion(),
 		m_wasm ? AssemblyStack::Language::Ewasm : AssemblyStack::Language::StrictAssembly,
-		OptimiserSettings::preset(m_optimisationPreset)
+		OptimiserSettings::preset(m_optimisationPreset),
+		DebugInfoSelection::All()
 	);
 	if (!stack.parseAndAnalyze("source", m_source))
 	{
 		AnsiColorized(_stream, _formatted, {formatting::BOLD, formatting::RED}) << _linePrefix << "Error parsing source." << endl;
-		printErrors(_stream, stack.errors());
+		SourceReferenceFormatter{_stream, stack, true, false}
+			.printErrorInformation(stack.errors());
 		return TestResult::FatalError;
 	}
 	stack.optimize();
@@ -80,7 +84,7 @@ TestCase::TestResult ObjectCompilerTest::run(ostream& _stream, string const& _li
 		solAssert(obj.bytecode, "");
 
 		m_obtainedResult = "Text:\n" + obj.assembly + "\n";
-		m_obtainedResult += "Binary:\n" + toHex(obj.bytecode->bytecode) + "\n";
+		m_obtainedResult += "Binary:\n" + util::toHex(obj.bytecode->bytecode) + "\n";
 	}
 	else
 	{
@@ -94,7 +98,7 @@ TestCase::TestResult ObjectCompilerTest::run(ostream& _stream, string const& _li
 		else
 			m_obtainedResult +=
 				"Bytecode: " +
-				toHex(obj.bytecode->bytecode) +
+				util::toHex(obj.bytecode->bytecode) +
 				"\nOpcodes: " +
 				boost::trim_copy(evmasm::disassemble(obj.bytecode->bytecode)) +
 				"\nSourceMappings:" +
@@ -103,12 +107,4 @@ TestCase::TestResult ObjectCompilerTest::run(ostream& _stream, string const& _li
 	}
 
 	return checkResult(_stream, _linePrefix, _formatted);
-}
-
-void ObjectCompilerTest::printErrors(ostream& _stream, ErrorList const& _errors)
-{
-	SourceReferenceFormatter formatter(_stream, true, false);
-
-	for (auto const& error: _errors)
-		formatter.printErrorInformation(*error);
 }

@@ -52,6 +52,7 @@
 #include <range/v3/view/reverse.hpp>
 
 #include <algorithm>
+#include <limits>
 
 using namespace std;
 using namespace solidity;
@@ -191,7 +192,12 @@ size_t ContractCompiler::packIntoContractCreator(ContractDefinition const& _cont
 	auto const& immutables = contractType.immutableVariables();
 	// Push all immutable values on the stack.
 	for (auto const& immutable: immutables)
-		CompilerUtils(m_context).loadFromMemory(static_cast<unsigned>(m_context.immutableMemoryOffset(*immutable)), *immutable->annotation().type);
+		CompilerUtils(m_context).loadFromMemory(
+			static_cast<unsigned>(m_context.immutableMemoryOffset(*immutable)),
+			*immutable->annotation().type,
+			false,
+			true
+	);
 	m_context.pushSubroutineSize(m_context.runtimeSub());
 	if (immutables.empty())
 		m_context << Instruction::DUP1;
@@ -229,7 +235,7 @@ size_t ContractCompiler::deployLibrary(ContractDefinition const& _contract)
 	m_context.pushSubroutineOffset(m_context.runtimeSub());
 	// This code replaces the address added by appendDeployTimeAddress().
 	m_context.appendInlineAssembly(
-		Whiskers(R"(
+		util::Whiskers(R"(
 		{
 			// If code starts at 11, an mstore(0) writes to the full PUSH20 plus data
 			// without the need for a shift.
@@ -438,7 +444,7 @@ void ContractCompiler::appendFunctionSelector(ContractDefinition const& _contrac
 	// retrieve the function signature hash from the calldata
 	if (!interfaceFunctions.empty())
 	{
-		CompilerUtils(m_context).loadFromMemory(0, IntegerType(CompilerUtils::dataStartOffset * 8), true);
+		CompilerUtils(m_context).loadFromMemory(0, IntegerType(CompilerUtils::dataStartOffset * 8), true, false);
 
 		// stack now is: <can-call-non-view-functions>? <funhash>
 		vector<FixedHash<4>> sortedIDs;
@@ -666,7 +672,7 @@ bool ContractCompiler::visit(FunctionDefinition const& _function)
 		BOOST_THROW_EXCEPTION(
 			StackTooDeepError() <<
 			errinfo_sourceLocation(_function.location()) <<
-			errinfo_comment("Stack too deep, try removing local variables.")
+			util::errinfo_comment("Stack too deep, try removing local variables.")
 		);
 	while (!stackLayout.empty() && stackLayout.back() != static_cast<int>(stackLayout.size() - 1))
 		if (stackLayout.back() < 0)
@@ -702,16 +708,13 @@ bool ContractCompiler::visit(FunctionDefinition const& _function)
 bool ContractCompiler::visit(InlineAssembly const& _inlineAssembly)
 {
 	unsigned startStackHeight = m_context.stackHeight();
-	yul::ExternalIdentifierAccess identifierAccess;
-	identifierAccess.resolve = [&](yul::Identifier const& _identifier, yul::IdentifierContext, bool)
+	yul::ExternalIdentifierAccess::CodeGenerator identifierAccessCodeGen = [&](
+		yul::Identifier const& _identifier,
+		yul::IdentifierContext _context,
+		yul::AbstractAssembly& _assembly
+	)
 	{
-		auto ref = _inlineAssembly.annotation().externalReferences.find(&_identifier);
-		if (ref == _inlineAssembly.annotation().externalReferences.end())
-			return numeric_limits<size_t>::max();
-		return ref->second.valueSize;
-	};
-	identifierAccess.generateCode = [&](yul::Identifier const& _identifier, yul::IdentifierContext _context, yul::AbstractAssembly& _assembly)
-	{
+		solAssert(_context == yul::IdentifierContext::RValue || _context == yul::IdentifierContext::LValue, "");
 		auto ref = _inlineAssembly.annotation().externalReferences.find(&_identifier);
 		solAssert(ref != _inlineAssembly.annotation().externalReferences.end(), "");
 		Declaration const* decl = ref->second.declaration;
@@ -820,6 +823,16 @@ bool ContractCompiler::visit(InlineAssembly const& _inlineAssembly)
 							if (suffix == "length")
 								stackDiff--;
 						}
+						else if (
+							auto const* functionType = dynamic_cast<FunctionType const*>(variable->type());
+							functionType && functionType->kind() == FunctionType::Kind::External
+						)
+						{
+							solAssert(suffix == "selector" || suffix == "address", "");
+							solAssert(variable->type()->sizeOnStack() == 2, "");
+							if (suffix == "selector")
+								stackDiff--;
+						}
 						else
 							solAssert(false, "");
 					}
@@ -829,7 +842,7 @@ bool ContractCompiler::visit(InlineAssembly const& _inlineAssembly)
 						BOOST_THROW_EXCEPTION(
 							StackTooDeepError() <<
 							errinfo_sourceLocation(_inlineAssembly.location()) <<
-							errinfo_comment("Stack too deep, try removing local variables.")
+							util::errinfo_comment("Stack too deep, try removing local variables.")
 						);
 					_assembly.appendInstruction(dupInstruction(stackDiff));
 				}
@@ -863,14 +876,37 @@ bool ContractCompiler::visit(InlineAssembly const& _inlineAssembly)
 			}
 			else if (variable->type()->dataStoredIn(DataLocation::CallData))
 			{
-				auto const* arrayType = dynamic_cast<ArrayType const*>(variable->type());
-				solAssert(
-					arrayType && arrayType->isDynamicallySized() && arrayType->dataStoredIn(DataLocation::CallData),
-					""
-				);
-				solAssert(suffix == "offset" || suffix == "length", "");
+				if (auto const* arrayType = dynamic_cast<ArrayType const*>(variable->type()))
+				{
+					if (arrayType->isDynamicallySized())
+					{
+						solAssert(suffix == "offset" || suffix == "length", "");
+						solAssert(variable->type()->sizeOnStack() == 2, "");
+						if (suffix == "length")
+							stackDiff--;
+					}
+					else
+					{
+						solAssert(variable->type()->sizeOnStack() == 1, "");
+						solAssert(suffix.empty(), "");
+					}
+				}
+				else
+				{
+					auto const* structType = dynamic_cast<StructType const*>(variable->type());
+					solAssert(structType, "");
+					solAssert(variable->type()->sizeOnStack() == 1, "");
+					solAssert(suffix.empty(), "");
+				}
+			}
+			else if (
+				auto const* functionType = dynamic_cast<FunctionType const*>(variable->type());
+				functionType && functionType->kind() == FunctionType::Kind::External
+			)
+			{
+				solAssert(suffix == "selector" || suffix == "address", "");
 				solAssert(variable->type()->sizeOnStack() == 2, "");
-				if (suffix == "length")
+				if (suffix == "selector")
 					stackDiff--;
 			}
 			else
@@ -880,7 +916,7 @@ bool ContractCompiler::visit(InlineAssembly const& _inlineAssembly)
 				BOOST_THROW_EXCEPTION(
 					StackTooDeepError() <<
 					errinfo_sourceLocation(_inlineAssembly.location()) <<
-					errinfo_comment("Stack too deep(" + to_string(stackDiff) + "), try removing local variables.")
+					util::errinfo_comment("Stack too deep(" + to_string(stackDiff) + "), try removing local variables.")
 				);
 			_assembly.appendInstruction(swapInstruction(stackDiff));
 			_assembly.appendInstruction(Instruction::POP);
@@ -918,7 +954,7 @@ bool ContractCompiler::visit(InlineAssembly const& _inlineAssembly)
 		*analysisInfo,
 		*m_context.assemblyPtr(),
 		m_context.evmVersion(),
-		identifierAccess,
+		identifierAccessCodeGen,
 		false,
 		m_optimiserSettings.optimizeStackAllocation
 	);
@@ -1009,7 +1045,7 @@ void ContractCompiler::handleCatch(vector<ASTPointer<TryCatchClause>> const& _ca
 		solAssert(m_context.evmVersion().supportsReturndata(), "");
 
 		// stack: <selector>
-		m_context << Instruction::DUP1 << selectorFromSignature32("Error(string)") << Instruction::EQ;
+		m_context << Instruction::DUP1 << util::selectorFromSignature32("Error(string)") << Instruction::EQ;
 		m_context << Instruction::ISZERO;
 		m_context.appendConditionalJumpTo(panicTag);
 		m_context << Instruction::POP; // remove selector
@@ -1041,7 +1077,7 @@ void ContractCompiler::handleCatch(vector<ASTPointer<TryCatchClause>> const& _ca
 		solAssert(m_context.evmVersion().supportsReturndata(), "");
 
 		// stack: <selector>
-		m_context << selectorFromSignature32("Panic(uint256)") << Instruction::EQ;
+		m_context << util::selectorFromSignature32("Panic(uint256)") << Instruction::EQ;
 		m_context << Instruction::ISZERO;
 		m_context.appendConditionalJumpTo(fallbackTag);
 

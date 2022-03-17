@@ -39,6 +39,9 @@
 
 #include <libsmtutil/CHCSolverInterface.h>
 
+#include <liblangutil/SourceLocation.h>
+#include <liblangutil/UniqueErrorReporter.h>
+
 #include <boost/algorithm/string/join.hpp>
 
 #include <map>
@@ -53,17 +56,23 @@ class CHC: public SMTEncoder
 public:
 	CHC(
 		smt::EncodingContext& _context,
-		langutil::ErrorReporter& _errorReporter,
+		langutil::UniqueErrorReporter& _errorReporter,
 		std::map<util::h256, std::string> const& _smtlib2Responses,
 		ReadCallback::Callback const& _smtCallback,
-		smtutil::SMTSolverChoice _enabledSolvers,
-		ModelCheckerSettings const& _settings
+		ModelCheckerSettings const& _settings,
+		langutil::CharStreamProvider const& _charStreamProvider
 	);
 
 	void analyze(SourceUnit const& _sources);
 
-	std::map<ASTNode const*, std::set<VerificationTargetType>> const& safeTargets() const { return m_safeTargets; }
-	std::map<ASTNode const*, std::set<VerificationTargetType>> const& unsafeTargets() const { return m_unsafeTargets; }
+	struct ReportTargetInfo
+	{
+		langutil::ErrorId error;
+		langutil::SourceLocation location;
+		std::string message;
+	};
+	std::map<ASTNode const*, std::set<VerificationTargetType>, smt::EncodingContext::IdCompare> const& safeTargets() const { return m_safeTargets; }
+	std::map<ASTNode const*, std::map<VerificationTargetType, ReportTargetInfo>, smt::EncodingContext::IdCompare> const& unsafeTargets() const { return m_unsafeTargets; }
 
 	/// This is used if the Horn solver is not directly linked into this binary.
 	/// @returns a list of inputs to the Horn solver that were not part of the argument to
@@ -156,6 +165,12 @@ private:
 	/// in a given _source.
 	void defineInterfacesAndSummaries(SourceUnit const& _source);
 
+	/// Creates the rule
+	/// summary_function \land transaction_entry_constraints => external_summary_function
+	/// This is needed to add these transaction entry constraints which include
+	/// potential balance increase by external means, for example.
+	void defineExternalFunctionInterface(FunctionDefinition const& _function, ContractDefinition const& _contract);
+
 	/// Creates a CHC system that, for a given contract,
 	/// - initializes its state variables (as 0 or given value, if any).
 	/// - "calls" the explicit constructor function of the contract, if any.
@@ -217,24 +232,33 @@ private:
 	/// @returns a predicate that defines a function summary.
 	smtutil::Expression summary(FunctionDefinition const& _function);
 	smtutil::Expression summary(FunctionDefinition const& _function, ContractDefinition const& _contract);
+	/// @returns a predicate that applies a function summary
+	/// over the constrained variables.
+	smtutil::Expression summaryCall(FunctionDefinition const& _function);
+	smtutil::Expression summaryCall(FunctionDefinition const& _function, ContractDefinition const& _contract);
+	/// @returns a predicate that defines an external function summary.
+	smtutil::Expression externalSummary(FunctionDefinition const& _function);
+	smtutil::Expression externalSummary(FunctionDefinition const& _function, ContractDefinition const& _contract);
 	//@}
 
 	/// Solver related.
 	//@{
 	/// Adds Horn rule to the solver.
 	void addRule(smtutil::Expression const& _rule, std::string const& _ruleName);
-	/// @returns <true, empty> if query is unsatisfiable (safe).
-	/// @returns <false, model> otherwise.
-	std::pair<smtutil::CheckResult, smtutil::CHCSolverInterface::CexGraph> query(smtutil::Expression const& _query, langutil::SourceLocation const& _location);
+	/// @returns <true, invariant, empty> if query is unsatisfiable (safe).
+	/// @returns <false, Expression(true), model> otherwise.
+	std::tuple<smtutil::CheckResult, smtutil::Expression, smtutil::CHCSolverInterface::CexGraph> query(smtutil::Expression const& _query, langutil::SourceLocation const& _location);
 
 	void verificationTargetEncountered(ASTNode const* const _errorNode, VerificationTargetType _type, smtutil::Expression const& _errorCondition);
 
 	void checkVerificationTargets();
-	// Forward declaration. Definition is below.
+	// Forward declarations. Definitions are below.
 	struct CHCVerificationTarget;
+	struct CHCQueryPlaceholder;
 	void checkAssertTarget(ASTNode const* _scope, CHCVerificationTarget const& _target);
 	void checkAndReportTarget(
 		CHCVerificationTarget const& _target,
+		std::vector<CHCQueryPlaceholder> const& _placeholders,
 		langutil::ErrorId _errorReporterId,
 		std::string _satMsg,
 		std::string _unknownMsg = ""
@@ -309,6 +333,9 @@ private:
 
 	/// Function predicates.
 	std::map<ContractDefinition const*, std::map<FunctionDefinition const*, Predicate const*>> m_summaries;
+
+	/// External function predicates.
+	std::map<ContractDefinition const*, std::map<FunctionDefinition const*, Predicate const*>> m_externalSummaries;
 	//@}
 
 	/// Variables.
@@ -347,10 +374,15 @@ private:
 	/// Helper mapping unique IDs to actual verification targets.
 	std::map<unsigned, CHCVerificationTarget> m_verificationTargets;
 
-	/// Targets proven safe.
-	std::map<ASTNode const*, std::set<VerificationTargetType>> m_safeTargets;
-	/// Targets proven unsafe.
-	std::map<ASTNode const*, std::set<VerificationTargetType>> m_unsafeTargets;
+	/// Targets proved safe.
+	std::map<ASTNode const*, std::set<VerificationTargetType>, smt::EncodingContext::IdCompare> m_safeTargets;
+	/// Targets proved unsafe.
+	std::map<ASTNode const*, std::map<VerificationTargetType, ReportTargetInfo>, smt::EncodingContext::IdCompare> m_unsafeTargets;
+	/// Targets not proved.
+	std::map<ASTNode const*, std::map<VerificationTargetType, ReportTargetInfo>, smt::EncodingContext::IdCompare> m_unprovedTargets;
+
+	/// Inferred invariants.
+	std::map<Predicate const*, std::set<std::string>, PredicateCompare> m_invariants;
 	//@}
 
 	/// Control-flow.
@@ -389,12 +421,6 @@ private:
 
 	/// CHC solver.
 	std::unique_ptr<smtutil::CHCSolverInterface> m_interface;
-
-	/// ErrorReporter that comes from CompilerStack.
-	langutil::ErrorReporter& m_outerErrorReporter;
-
-	/// SMT solvers that are chosen at runtime.
-	smtutil::SMTSolverChoice m_enabledSolvers;
 };
 
 }

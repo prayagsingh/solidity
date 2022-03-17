@@ -1,4 +1,4 @@
-from z3 import *
+from z3 import BitVecVal, BV2Int, If, LShR, UDiv, ULT, UGT, URem
 
 def ADD(x, y):
 	return x + y
@@ -59,4 +59,23 @@ def SAR(x, y):
 
 def BYTE(i, x):
 	bit = (i + 1) * 8
-	return If(UGT(bit, x.size()), BitVecVal(0, x.size()), (LShR(x, (x.size() - bit))) & 0xff)
+	return If(
+		UGT(i, x.size() / 8 - 1),
+		BitVecVal(0, x.size()),
+		(LShR(x, (x.size() - bit))) & 0xff
+	)
+
+def SIGNEXTEND(i, x):
+	bitBV = i * 8 + 7
+	bitInt = BV2Int(i) * 8 + 7
+	test = BitVecVal(1, x.size()) << bitBV
+	mask = test - 1
+	return If(
+		bitInt >= x.size(),
+		x,
+		If(
+			(x & test) == 0,
+			x & mask,
+			x | ~mask
+		)
+	)

@@ -16,10 +16,11 @@
 */
 // SPDX-License-Identifier: GPL-3.0
 
-#include "libsolidity/formal/ModelCheckerSettings.h"
 #include <test/tools/fuzzer_common.h>
 
+#include <libsolidity/interface/OptimiserSettings.h>
 #include <libsolidity/interface/CompilerStack.h>
+#include <libsolidity/formal/ModelCheckerSettings.h>
 
 #include <libsolutil/JSON.h>
 
@@ -34,9 +35,10 @@
 
 using namespace std;
 using namespace solidity;
-using namespace solidity::util;
 using namespace solidity::evmasm;
+using namespace solidity::frontend;
 using namespace solidity::langutil;
+using namespace solidity::util;
 
 static vector<EVMVersion> s_evmVersions = {
 	EVMVersion::homestead(),
@@ -62,7 +64,7 @@ void FuzzerUtil::testCompilerJsonInterface(string const& _input, bool _optimize,
 	config["settings"] = Json::objectValue;
 	config["settings"]["optimizer"] = Json::objectValue;
 	config["settings"]["optimizer"]["enabled"] = _optimize;
-	config["settings"]["optimizer"]["runs"] = 200;
+	config["settings"]["optimizer"]["runs"] = static_cast<int>(OptimiserSettings{}.expectedExecutionsPerDeployment);
 	config["settings"]["evmVersion"] = "berlin";
 
 	// Enable all SourceUnit-level outputs.
@@ -76,7 +78,7 @@ void FuzzerUtil::testCompilerJsonInterface(string const& _input, bool _optimize,
 void FuzzerUtil::forceSMT(StringMap& _input)
 {
 	// Add SMT checker pragma if not already present in source
-	static const char* smtPragma = "pragma experimental SMTChecker;";
+	static auto constexpr smtPragma = "pragma experimental SMTChecker;";
 	for (auto &sourceUnit: _input)
 		if (sourceUnit.second.find(smtPragma) == string::npos)
 			sourceUnit.second += smtPragma;
@@ -102,7 +104,11 @@ void FuzzerUtil::testCompiler(
 		forceSMT(_input);
 		compiler.setModelCheckerSettings({
 			frontend::ModelCheckerContracts::Default(),
+			/*divModWithSlacks*/true,
 			frontend::ModelCheckerEngine::All(),
+			frontend::ModelCheckerInvariants::All(),
+			/*showUnproved=*/false,
+			smtutil::SMTSolverChoice::All(),
 			frontend::ModelCheckerTargets::Default(),
 			/*timeout=*/1
 		});
@@ -179,25 +185,27 @@ void FuzzerUtil::testConstantOptimizer(string const& _input, bool _quiet)
 	if (!_quiet)
 		cout << "Got " << numbers.size() << " inputs:" << endl;
 
-	Assembly assembly;
-	for (u256 const& n: numbers)
-	{
-		if (!_quiet)
-			cout << n << endl;
-		assembly.append(n);
-	}
 	for (bool isCreation: {false, true})
+	{
+		Assembly assembly{isCreation, {}};
+		for (u256 const& n: numbers)
+		{
+			if (!_quiet)
+				cout << n << endl;
+			assembly.append(n);
+		}
 		for (unsigned runs: {1u, 2u, 3u, 20u, 40u, 100u, 200u, 400u, 1000u})
 		{
 			// Make a copy here so that each time we start with the original state.
 			Assembly tmp = assembly;
 			ConstantOptimisationMethod::optimiseConstants(
-					isCreation,
-					runs,
-					langutil::EVMVersion{},
-					tmp
+				isCreation,
+				runs,
+				langutil::EVMVersion{},
+				tmp
 			);
 		}
+	}
 }
 
 void FuzzerUtil::testStandardCompiler(string const& _input, bool _quiet)

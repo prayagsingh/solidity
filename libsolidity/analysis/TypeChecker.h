@@ -110,16 +110,29 @@ private:
 		FunctionTypePointer _functionType
 	);
 
+	/// Performs checks specific to the ABI encode functions of type ABIEncodeCall
+	void typeCheckABIEncodeCallFunction(FunctionCall const& _functionCall);
+
+	/// Performs general checks and checks specific to string concat function call
+	void typeCheckStringConcatFunction(
+		FunctionCall const& _functionCall,
+		FunctionType const* _functionType
+	);
+
 	/// Performs general checks and checks specific to bytes concat function call
 	void typeCheckBytesConcatFunction(
 		FunctionCall const& _functionCall,
 		FunctionType const* _functionType
 	);
 
+	bool visit(ImportDirective const&) override;
+
 	void endVisit(InheritanceSpecifier const& _inheritance) override;
 	void endVisit(ModifierDefinition const& _modifier) override;
 	bool visit(FunctionDefinition const& _function) override;
+	void endVisit(ArrayTypeName const& _typeName) override;
 	bool visit(VariableDeclaration const& _variable) override;
+	void endVisit(StructDefinition const& _struct) override;
 	/// We need to do this manually because we want to pass the bases of the current contract in
 	/// case this is a base constructor call.
 	void visitManually(ModifierInvocation const& _modifier, std::vector<ContractDefinition const*> const& _bases);

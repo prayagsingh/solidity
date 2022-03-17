@@ -64,8 +64,12 @@ struct CodeTransformContext
 class CodeTransform
 {
 public:
+	/// Use named labels for functions 1) Yes and check that the names are unique
+	/// 2) For none of the functions 3) for the first function of each name.
+	enum class UseNamedLabels { YesAndForceUnique, Never, ForFirstFunctionOfEachName };
+
 	/// Create the code transformer.
-	/// @param _identifierAccess used to resolve identifiers external to the inline assembly
+	/// @param _identifierAccessCodeGen used to generate code for identifiers external to the inline assembly
 	/// As a side-effect of its construction, translates the Yul code and appends it to the
 	/// given assembly.
 	/// Throws StackTooDeepError if a variable is not accessible or if a function has too
@@ -77,8 +81,8 @@ public:
 		EVMDialect const& _dialect,
 		BuiltinContext& _builtinContext,
 		bool _allowStackOpt = false,
-		ExternalIdentifierAccess const& _identifierAccess = ExternalIdentifierAccess(),
-		bool _useNamedLabelsForFunctions = false
+		ExternalIdentifierAccess::CodeGenerator const& _identifierAccessCodeGen = {},
+		UseNamedLabels _useNamedLabelsForFunctions = UseNamedLabels::Never
 	): CodeTransform(
 		_assembly,
 		_analysisInfo,
@@ -86,7 +90,7 @@ public:
 		_allowStackOpt,
 		_dialect,
 		_builtinContext,
-		_identifierAccess,
+		_identifierAccessCodeGen,
 		_useNamedLabelsForFunctions,
 		nullptr,
 		{},
@@ -107,8 +111,8 @@ protected:
 		bool _allowStackOpt,
 		EVMDialect const& _dialect,
 		BuiltinContext& _builtinContext,
-		ExternalIdentifierAccess _identifierAccess,
-		bool _useNamedLabelsForFunctions,
+		ExternalIdentifierAccess::CodeGenerator _identifierAccessCodeGen,
+		UseNamedLabels _useNamedLabelsForFunctions,
 		std::shared_ptr<Context> _context,
 		std::vector<TypedName> _delayedReturnVariables,
 		std::optional<AbstractAssembly::LabelID> _functionExitLabel
@@ -142,7 +146,8 @@ public:
 
 private:
 	AbstractAssembly::LabelID labelFromIdentifier(Identifier const& _identifier);
-	AbstractAssembly::LabelID functionEntryID(YulString _name, Scope::Function const& _function);
+	void createFunctionEntryID(FunctionDefinition const& _function);
+	AbstractAssembly::LabelID functionEntryID(Scope::Function const& _scopeFunction) const;
 	/// Generates code for an expression that is supposed to return a single value.
 	void visitExpression(Expression const& _expression);
 
@@ -181,6 +186,10 @@ private:
 	{
 		return m_functionExitStackHeight.has_value();
 	}
+	bool isInsideFunction() const
+	{
+		return m_functionExitLabel.has_value();
+	}
 
 	AbstractAssembly& m_assembly;
 	AsmAnalysisInfo& m_info;
@@ -188,8 +197,9 @@ private:
 	EVMDialect const& m_dialect;
 	BuiltinContext& m_builtinContext;
 	bool const m_allowStackOpt = true;
-	bool const m_useNamedLabelsForFunctions = false;
-	ExternalIdentifierAccess m_identifierAccess;
+	UseNamedLabels const m_useNamedLabelsForFunctions = UseNamedLabels::Never;
+	std::set<YulString> m_assignedNamedLabels;
+	ExternalIdentifierAccess::CodeGenerator m_identifierAccessCodeGen;
 	std::shared_ptr<Context> m_context;
 
 	/// Set of variables whose reference counter has reached zero,

@@ -15,10 +15,10 @@ FILETMP=$(mktemp -d)
 cd "$FILETMP" || exit 1
 
 
-function testFile()
+function testFile
 {
 	set +e
-	ALLOUTPUT=$($SOLC --combined-json ast,compact-format --pretty-json "$@" --stop-after parsing 2>&1)
+	ALLOUTPUT=$($SOLC --combined-json ast --pretty-json "$@" --stop-after parsing 2>&1)
 	local RESULT=$?
 	set -e
 	if test ${RESULT} -ne 0; then

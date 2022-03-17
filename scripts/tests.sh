@@ -38,7 +38,8 @@ source "${REPO_ROOT}/scripts/common.sh"
 WORKDIR=$(mktemp -d)
 CMDLINE_PID=
 
-cleanup() {
+function cleanup
+{
     # ensure failing commands don't cause termination during cleanup (especially within safe_kill)
     set +e
 
@@ -52,20 +53,38 @@ cleanup() {
 }
 trap cleanup INT TERM
 
-if [ "$1" = --junit_report ]
-then
-    if [ -z "$2" ]
-    then
-        echo "Usage: $0 [--junit_report <report_directory>]"
-        exit 1
-    fi
-    log_directory="$2"
-else
-    log_directory=""
-fi
+log_directory=""
+no_smt=""
+while [[ $# -gt 0 ]]
+do
+    case "$1" in
+        --junit_report)
+            if [ -z "$2" ]
+            then
+                echo "Usage: $0 [--junit_report <report_directory>] [--no-smt]"
+                exit 1
+            else
+                log_directory="$2"
+            fi
+            shift
+            shift
+            ;;
+        --no-smt)
+            no_smt="--no-smt"
+            SMT_FLAGS+=(--no-smt)
+            shift
+            ;;
+        *)
+            echo "Usage: $0 [--junit_report <report_directory>] [--no-smt]"
+            exit 1
+    esac
+done
 
 printTask "Testing Python scripts..."
 "$REPO_ROOT/test/pyscriptTests.py"
+
+printTask "Testing LSP..."
+"$REPO_ROOT/scripts/test_solidity_lsp.py" "${SOLIDITY_BUILD_DIR}/solc/solc"
 
 printTask "Running commandline tests..."
 # Only run in parallel if this is run on CI infrastructure
@@ -74,7 +93,7 @@ then
     "$REPO_ROOT/test/cmdlineTests.sh" &
     CMDLINE_PID=$!
 else
-    if ! "$REPO_ROOT/test/cmdlineTests.sh"
+    if ! "$REPO_ROOT/test/cmdlineTests.sh" "$no_smt"
     then
         printError "Commandline tests FAILED"
         exit 1
@@ -86,7 +105,7 @@ EVM_VERSIONS="homestead byzantium"
 
 if [ -z "$CI" ]
 then
-    EVM_VERSIONS+=" constantinople petersburg istanbul berlin"
+    EVM_VERSIONS+=" constantinople petersburg istanbul berlin london"
 fi
 
 # And then run the Solidity unit-tests in the matrix combination of optimizer / no optimizer
@@ -96,9 +115,9 @@ do
     for vm in $EVM_VERSIONS
     do
         FORCE_ABIV1_RUNS="no"
-        if [[ "$vm" == "berlin" ]]
+        if [[ "$vm" == "london" ]]
         then
-            FORCE_ABIV1_RUNS="no yes" # run both in berlin
+            FORCE_ABIV1_RUNS="no yes" # run both in london
         fi
         for abiv1 in $FORCE_ABIV1_RUNS
         do

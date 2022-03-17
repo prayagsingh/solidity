@@ -19,7 +19,7 @@
 
 #include <libsolutil/AnsiColorized.h>
 
-#include <boost/algorithm/string/replace.hpp>
+#include <boost/algorithm/string.hpp>
 
 #include <optional>
 #include <stdexcept>
@@ -322,7 +322,9 @@ string TestFunctionCall::formatRawParameters(
 			if (param.format.newline)
 				os << endl << _linePrefix << "// ";
 			for (auto const c: param.rawString)
-				os << (c >= ' ' ? string(1, c) : "\\x" + toHex(static_cast<uint8_t>(c)));
+				// NOTE: Even though we have a toHex() overload specifically for uint8_t, the compiler
+				// chooses the one for bytes if the second argument is omitted.
+				os << (c >= ' ' ? string(1, c) : "\\x" + util::toHex(static_cast<uint8_t>(c), HexCase::Lower));
 			if (&param != &_params.back())
 				os << ", ";
 		}

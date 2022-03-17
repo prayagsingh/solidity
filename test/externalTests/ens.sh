@@ -18,32 +18,62 @@
 #
 # (c) 2019 solidity contributors.
 #------------------------------------------------------------------------------
+
+set -e
+
 source scripts/common.sh
 source test/externalTests/common.sh
 
-verify_input "$1"
-export SOLJSON="$1"
+REPO_ROOT=$(realpath "$(dirname "$0")/../..")
 
-function install_fn { npm install; }
-function compile_fn { npx truffle compile; }
-function test_fn { npm run test; }
+verify_input "$@"
+BINARY_TYPE="$1"
+BINARY_PATH="$2"
+SELECTED_PRESETS="$3"
+
+function compile_fn { yarn build; }
+function test_fn { yarn test; }
 
 function ens_test
 {
-    export OPTIMIZER_LEVEL=1
-    export CONFIG="truffle-config.js"
+    local repo="https://github.com/ensdomains/ens-contracts.git"
+    local ref_type=tag
+    local ref="v0.0.8"     # The project is in flux right now and master might be too unstable for us
+    local config_file="hardhat.config.js"
 
-    truffle_setup "$SOLJSON" https://github.com/solidity-external-tests/ens.git master_080
+    local compile_only_presets=(
+        legacy-no-optimize        # Compiles but tests fail to deploy GovernorCompatibilityBravo (code too large).
+    )
+    local settings_presets=(
+        "${compile_only_presets[@]}"
+        #ir-no-optimize           # Compilation fails with "YulException: Variable var__945 is 1 slot(s) too deep inside the stack."
+        #ir-optimize-evm-only     # Compilation fails with "YulException: Variable var__945 is 1 slot(s) too deep inside the stack."
+        ir-optimize-evm+yul      # Needs memory-safe inline assembly patch
+        legacy-optimize-evm-only
+        legacy-optimize-evm+yul
+    )
 
-    # Use latest Truffle. Older versions crash on the output from 0.8.0.
-    force_truffle_version ^5.1.55
+    [[ $SELECTED_PRESETS != "" ]] || SELECTED_PRESETS=$(circleci_select_steps_multiarg "${settings_presets[@]}")
+    print_presets_or_exit "$SELECTED_PRESETS"
 
-    # Remove the lock file (if it exists) to prevent it from overriding our changes in package.json
-    rm -f package-lock.json
+    setup_solc "$DIR" "$BINARY_TYPE" "$BINARY_PATH"
+    download_project "$repo" "$ref_type" "$ref" "$DIR"
 
-    run_install "$SOLJSON" install_fn
+    neutralize_package_lock
+    neutralize_package_json_hooks
+    force_hardhat_compiler_binary "$config_file" "$BINARY_TYPE" "$BINARY_PATH"
+    force_hardhat_compiler_settings "$config_file" "$(first_word "$SELECTED_PRESETS")"
+    yarn install
 
-    truffle_run_test "$SOLJSON" compile_fn test_fn
+    replace_version_pragmas
+    neutralize_packaged_contracts
+
+    find . -name "*.sol" -exec sed -i -e 's/^\(\s*\)\(assembly\)/\1\/\/\/ @solidity memory-safe-assembly\n\1\2/' '{}' \;
+
+    for preset in $SELECTED_PRESETS; do
+        hardhat_run_test "$config_file" "$preset" "${compile_only_presets[*]}" compile_fn test_fn
+        store_benchmark_report hardhat ens "$repo" "$preset"
+    done
 }
 
-external_test Ens ens_test
+external_test ENS ens_test

@@ -25,7 +25,6 @@
 #include <libsolutil/Algorithms.h>
 #include <libsolutil/FunctionSelector.h>
 
-#include <boost/range/adaptor/map.hpp>
 #include <memory>
 
 using namespace std;
@@ -36,14 +35,14 @@ using namespace solidity::frontend;
 bool PostTypeChecker::check(ASTNode const& _astRoot)
 {
 	_astRoot.accept(*this);
-	return Error::containsOnlyWarnings(m_errorReporter.errors());
+	return !Error::containsErrors(m_errorReporter.errors());
 }
 
 bool PostTypeChecker::finalize()
 {
 	for (auto& checker: m_checkers)
 		checker->finalize();
-	return Error::containsOnlyWarnings(m_errorReporter.errors());
+	return !Error::containsErrors(m_errorReporter.errors());
 }
 
 bool PostTypeChecker::visit(ContractDefinition const& _contractDefinition)
@@ -412,12 +411,12 @@ struct ReservedErrorSelector: public PostTypeChecker::Checker
 			);
 		else
 		{
-			uint32_t selector = selectorFromSignature32(_error.functionType(true)->externalSignature());
+			uint32_t selector = util::selectorFromSignature32(_error.functionType(true)->externalSignature());
 			if (selector == 0 || ~selector == 0)
 				m_errorReporter.syntaxError(
 					2855_error,
 					_error.location(),
-					"The selector 0x" + toHex(toCompactBigEndian(selector, 4)) + " is reserved. Please rename the error to avoid the collision."
+					"The selector 0x" + util::toHex(toCompactBigEndian(selector, 4)) + " is reserved. Please rename the error to avoid the collision."
 				);
 		}
 	}

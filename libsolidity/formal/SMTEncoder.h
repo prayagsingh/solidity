@@ -32,7 +32,7 @@
 #include <libsolidity/ast/AST.h>
 #include <libsolidity/ast/ASTVisitor.h>
 #include <libsolidity/interface/ReadFile.h>
-#include <liblangutil/ErrorReporter.h>
+#include <liblangutil/UniqueErrorReporter.h>
 
 #include <string>
 #include <unordered_map>
@@ -43,6 +43,7 @@ namespace solidity::langutil
 {
 class ErrorReporter;
 struct SourceLocation;
+class CharStreamProvider;
 }
 
 namespace solidity::frontend
@@ -53,11 +54,10 @@ class SMTEncoder: public ASTConstVisitor
 public:
 	SMTEncoder(
 		smt::EncodingContext& _context,
-		ModelCheckerSettings const& _settings
+		ModelCheckerSettings const& _settings,
+		langutil::UniqueErrorReporter& _errorReporter,
+		langutil::CharStreamProvider const& _charStreamProvider
 	);
-
-	/// @returns true if engine should proceed with analysis.
-	bool analyze(SourceUnit const& _sources);
 
 	/// @returns the leftmost identifier in a multi-d IndexAccess.
 	static Expression const* leftmostBase(IndexAccess const& _indexAccess);
@@ -70,6 +70,16 @@ public:
 	/// @returns the innermost element in a chain of 1-tuples if applicable,
 	/// otherwise _expr.
 	static Expression const* innermostTuple(Expression const& _expr);
+
+	/// @returns the underlying type if _type is UserDefinedValueType,
+	/// and _type otherwise.
+	static Type const* underlyingType(Type const* _type);
+
+	static TypePointers replaceUserTypes(TypePointers const& _types);
+
+	/// @returns {_funCall.expression(), nullptr} if function call option values are not given, and
+	/// {_funCall.expression().expression(), _funCall.expression()} if they are.
+	static std::pair<Expression const*, FunctionCallOptions const*> functionCallExpression(FunctionCall const& _funCall);
 
 	/// @returns the expression after stripping redundant syntactic sugar.
 	/// Currently supports stripping:
@@ -120,10 +130,13 @@ public:
 	static std::set<SourceUnit const*, ASTNode::CompareByID> sourceDependencies(SourceUnit const& _source);
 
 protected:
+	void resetSourceAnalysis();
+
 	// TODO: Check that we do not have concurrent reads and writes to a variable,
 	// because the order of expression evaluation is undefined
 	// TODO: or just force a certain order, but people might have a different idea about that.
 
+	bool visit(ImportDirective const& _node) override;
 	bool visit(ContractDefinition const& _node) override;
 	void endVisit(ContractDefinition const& _node) override;
 	void endVisit(VariableDeclaration const& _node) override;
@@ -146,6 +159,7 @@ protected:
 	bool visit(BinaryOperation const& _node) override;
 	void endVisit(BinaryOperation const& _node) override;
 	bool visit(Conditional const& _node) override;
+	bool visit(FunctionCall const& _node) override;
 	void endVisit(FunctionCall const& _node) override;
 	bool visit(ModifierInvocation const& _node) override;
 	void endVisit(Identifier const& _node) override;
@@ -200,6 +214,7 @@ protected:
 	void visitCryptoFunction(FunctionCall const& _funCall);
 	void visitGasLeft(FunctionCall const& _funCall);
 	virtual void visitAddMulMod(FunctionCall const& _funCall);
+	void visitWrapUnwrap(FunctionCall const& _funCall);
 	void visitObjectCreation(FunctionCall const& _funCall);
 	void visitTypeConversion(FunctionCall const& _funCall);
 	void visitStructConstructorCall(FunctionCall const& _funCall);
@@ -209,6 +224,8 @@ protected:
 	/// @returns true if @param _contract is set for analysis in the settings
 	/// and it is not abstract.
 	bool shouldAnalyze(ContractDefinition const& _contract) const;
+	/// @returns true if @param _source is set for analysis in the settings.
+	bool shouldAnalyze(SourceUnit const& _source) const;
 
 	bool isPublicGetter(Expression const& _expr);
 
@@ -301,6 +318,7 @@ protected:
 	void resetStateVariables();
 	void resetStorageVariables();
 	void resetMemoryVariables();
+	void resetBalances();
 	/// Resets all references/pointers that have the same type or have
 	/// a subexpression of the same type as _varDecl.
 	void resetReferences(VariableDeclaration const& _varDecl);
@@ -310,6 +328,8 @@ protected:
 	Type const* typeWithoutPointer(Type const* _type);
 	/// @returns whether _a or a subtype of _a is the same as _b.
 	bool sameTypeOrSubtype(Type const* _a, Type const* _b);
+
+	bool isSupportedType(Type const& _type) const;
 
 	/// Given the state of the symbolic variables at the end of two different branches,
 	/// create a merged state using the given branch condition.
@@ -385,6 +405,8 @@ protected:
 	/// type conversion.
 	std::vector<smtutil::Expression> symbolicArguments(FunctionCall const& _funCall, ContractDefinition const* _contextContract);
 
+	smtutil::Expression constantExpr(Expression const& _expr, VariableDeclaration const& _var);
+
 	/// Traverses all source units available collecting free functions
 	/// and internal library functions in m_freeFunctions.
 	void collectFreeFunctions(std::set<SourceUnit const*, ASTNode::CompareByID> const& _sources);
@@ -417,11 +439,7 @@ protected:
 	/// or unchecked arithmetic.
 	bool m_checked = true;
 
-	/// Local SMTEncoder ErrorReporter.
-	/// This is necessary to show the "No SMT solver available"
-	/// warning before the others in case it's needed.
-	langutil::ErrorReporter m_errorReporter;
-	langutil::ErrorList m_smtErrors;
+	langutil::UniqueErrorReporter& m_errorReporter;
 
 	/// Stores the current function/modifier call/invocation path.
 	std::vector<CallStackEntry> m_callStack;
@@ -468,6 +486,10 @@ protected:
 	smt::EncodingContext& m_context;
 
 	ModelCheckerSettings const& m_settings;
+
+	/// Character stream for each source,
+	/// used for retrieving source text of expressions for e.g. counter-examples.
+	langutil::CharStreamProvider const& m_charStreamProvider;
 
 	smt::SymbolicState& state();
 };

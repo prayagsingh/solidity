@@ -5,4 +5,4 @@ contract C {
     S public constant c;
 }
 // ----
-// DeclarationError 9259: (71-90): Constants of non-value type not yet implemented.
+// TypeError 9259: (71-90): Only constants of value type and byte array type are implemented.

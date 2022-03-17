@@ -24,6 +24,9 @@
 #pragma once
 
 #include <libsolidity/interface/CompilerStack.h>
+#include <libsolutil/JSON.h>
+
+#include <liblangutil/DebugInfoSelection.h>
 
 #include <optional>
 #include <utility>
@@ -46,8 +49,10 @@ public:
 	/// Creates a new StandardCompiler.
 	/// @param _readFile callback used to read files for import statements. Must return
 	/// and must not emit exceptions.
-	explicit StandardCompiler(ReadCallback::Callback _readFile = ReadCallback::Callback()):
-		m_readFile(std::move(_readFile))
+	explicit StandardCompiler(ReadCallback::Callback _readFile = ReadCallback::Callback(),
+		util::JsonFormat const& _format = {}):
+		m_readFile(std::move(_readFile)),
+		m_jsonPrintingFormat(std::move(_format))
 	{
 	}
 
@@ -75,6 +80,7 @@ private:
 		std::vector<ImportRemapper::Remapping> remappings;
 		RevertStrings revertStrings = RevertStrings::Default;
 		OptimiserSettings optimiserSettings = OptimiserSettings::minimal();
+		std::optional<langutil::DebugInfoSelection> debugInfoSelection;
 		std::map<std::string, util::h160> libraries;
 		bool metadataLiteralSources = false;
 		CompilerStack::MetadataHash metadataHash = CompilerStack::MetadataHash::IPFS;
@@ -91,6 +97,8 @@ private:
 	Json::Value compileYul(InputsAndSettings _inputsAndSettings);
 
 	ReadCallback::Callback m_readFile;
+
+	util::JsonFormat m_jsonPrintingFormat;
 };
 
 }

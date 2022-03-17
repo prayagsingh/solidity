@@ -24,11 +24,14 @@
 #include <libevmasm/LinkerObject.h>
 #include <libevmasm/Exceptions.h>
 
+#include <liblangutil/DebugInfoSelection.h>
 #include <liblangutil/EVMVersion.h>
 
 #include <libsolutil/Common.h>
 #include <libsolutil/Assertions.h>
 #include <libsolutil/Keccak256.h>
+
+#include <libsolidity/interface/OptimiserSettings.h>
 
 #include <json/json.h>
 
@@ -45,7 +48,7 @@ using AssemblyPointer = std::shared_ptr<Assembly>;
 class Assembly
 {
 public:
-	explicit Assembly(std::string _name = std::string()):m_name(std::move(_name)) { }
+	Assembly(bool _creation, std::string _name): m_creation(_creation), m_name(std::move(_name)) { }
 
 	AssemblyItem newTag() { assertThrow(m_usedTags < 0xffffffff, AssemblyException, ""); return AssemblyItem(Tag, m_usedTags++); }
 	AssemblyItem newPushTag() { assertThrow(m_usedTags < 0xffffffff, AssemblyException, ""); return AssemblyItem(PushTag, m_usedTags++); }
@@ -62,7 +65,7 @@ public:
 	AssemblyItem newPushImmutable(std::string const& _identifier);
 	AssemblyItem newImmutableAssignment(std::string const& _identifier);
 
-	AssemblyItem const& append(AssemblyItem const& _i);
+	AssemblyItem const& append(AssemblyItem _i);
 	AssemblyItem const& append(bytes const& _data) { return append(newData(_data)); }
 
 	template <class T> Assembly& operator<<(T const& _d) { append(_d); return *this; }
@@ -92,7 +95,7 @@ public:
 	void pushSubroutineOffset(size_t _subRoutine) { append(AssemblyItem(PushSub, _subRoutine)); }
 
 	/// Appends @a _data literally to the very end of the bytecode.
-	void appendAuxiliaryDataToEnd(bytes const& _data) { m_auxiliaryData += _data; }
+	void appendToAuxiliaryData(bytes const& _data) { m_auxiliaryData += _data; }
 
 	/// Returns the assembly items.
 	AssemblyItems const& items() const { return m_items; }
@@ -114,7 +117,6 @@ public:
 
 	struct OptimiserSettings
 	{
-		bool isCreation = false;
 		bool runInliner = false;
 		bool runJumpdestRemover = false;
 		bool runPeephole = false;
@@ -124,26 +126,21 @@ public:
 		langutil::EVMVersion evmVersion;
 		/// This specifies an estimate on how often each opcode in this assembly will be executed,
 		/// i.e. use a small value to optimise for size and a large value to optimise for runtime gas usage.
-		size_t expectedExecutionsPerDeployment = 200;
+		size_t expectedExecutionsPerDeployment = frontend::OptimiserSettings{}.expectedExecutionsPerDeployment;
 	};
 
 	/// Modify and return the current assembly such that creation and execution gas usage
 	/// is optimised according to the settings in @a _settings.
 	Assembly& optimise(OptimiserSettings const& _settings);
 
-	/// Modify (if @a _enable is set) and return the current assembly such that creation and
-	/// execution gas usage is optimised. @a _isCreation should be true for the top-level assembly.
-	/// @a _runs specifes an estimate on how often each opcode in this assembly will be executed,
-	/// i.e. use a small value to optimise for size and a large value to optimise for runtime.
-	/// If @a _enable is not set, will perform some simple peephole optimizations.
-	Assembly& optimise(bool _enable, langutil::EVMVersion _evmVersion, bool _isCreation, size_t _runs);
-
 	/// Create a text representation of the assembly.
 	std::string assemblyString(
+		langutil::DebugInfoSelection const& _debugInfoSelection = langutil::DebugInfoSelection::Default(),
 		StringMap const& _sourceCodes = StringMap()
 	) const;
 	void assemblyStream(
 		std::ostream& _out,
+		langutil::DebugInfoSelection const& _debugInfoSelection = langutil::DebugInfoSelection::Default(),
 		std::string const& _prefix = "",
 		StringMap const& _sourceCodes = StringMap()
 	) const;
@@ -159,13 +156,15 @@ public:
 	std::vector<size_t> decodeSubPath(size_t _subObjectId) const;
 	size_t encodeSubPath(std::vector<size_t> const& _subPath);
 
+	bool isCreation() const { return m_creation; }
+
 protected:
 	/// Does the same operations as @a optimise, but should only be applied to a sub and
 	/// returns the replaced tags. Also takes an argument containing the tags of this assembly
 	/// that are referenced in a super-assembly.
-	std::map<u256, u256> optimiseInternal(OptimiserSettings const& _settings, std::set<size_t> _tagsReferencedFromOutside);
+	std::map<u256, u256> const& optimiseInternal(OptimiserSettings const& _settings, std::set<size_t> _tagsReferencedFromOutside);
 
-	unsigned bytesRequired(unsigned subTagSize) const;
+	unsigned codeSize(unsigned subTagSize) const;
 
 private:
 	static Json::Value createJsonValue(
@@ -208,10 +207,16 @@ protected:
 	/// This map is used only for sub-assemblies which are not direct sub-assemblies (where path is having more than one value).
 	std::map<std::vector<size_t>, size_t> m_subPaths;
 
+	/// Contains the tag replacements relevant for super-assemblies.
+	/// If set, it means the optimizer has run and we will not run it again.
+	std::optional<std::map<u256, u256>> m_tagReplacements;
+
 	mutable LinkerObject m_assembledObject;
 	mutable std::vector<size_t> m_tagPositionsInBytecode;
 
 	int m_deposit = 0;
+	/// True, if the assembly contains contract creation code.
+	bool const m_creation = false;
 	/// Internal name of the assembly object, only used with the Yul backend
 	/// currently
 	std::string m_name;
